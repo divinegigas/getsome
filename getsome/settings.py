@@ -41,6 +41,9 @@ DEFAULTS: dict[str, Any] = {
     "guide_audio": "music",
     # Fake product ads in commercial breaks: "none", "few" or "lots" (show cards always play)
     "ads_products": "few",
+    # Window type when Steam starts Neon Cable 42 on a Wayland desktop: "wayland" (every remote button
+    # works) or "x11" (fallback if Big Picture shows sound but no picture; the remote's OK key is lost)
+    "steam_window": "wayland",
     # PIN that unlocks restricted channels in TV mode (digits only)
     "restricted_pin": "69",
     # After the PIN: lock restricted channels again after this many minutes in a row spent

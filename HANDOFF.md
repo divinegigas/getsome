@@ -257,6 +257,15 @@ commercials mark them "needs build" automatically (this update does that once fo
   decade; "Kid Zone" for kid-safe groups with kids/family genres. Episodic genres → Shuffle Classics, else
   Series Marathon. `media_index.rating_tier` is now shared by the pickers and autopop.
 
+**Remote OK button under Steam (20 Nov)**: owner reported OK stopped working in TV menus (Enter still
+did). Menus were fine in code (tested Return/Enter/Select). Cause: the Big Picture fix forced an X11 (xcb)
+window, and X11 can't deliver evdev key codes above 255: a remote's KEY_OK (352) and KEY_SELECT (353)
+never reach the app. Now `steam.window_type()`: Wayland on a Wayland desktop by default (overlay/libs/raise
+fixes stay), X11 in Game Mode (gamescope) or when Settings → Shortcuts → "When Steam starts it" =
+"Compatibility window" (`settings.steam_window` "x11"). **Owner to confirm** that Big Picture still shows
+the picture with the Wayland window; if not, the X11 fallback costs the OK key (a future fix would be
+reading the remote via evdev, which needs input-device permissions).
+
 **Steam library artwork** (owner asked for it to "just appear", like RetroDECK / Steam ROM Manager):
 - Settings → Shortcuts → **Add to Steam** (`steam_shortcut.add_to_steam`): for every Steam account
   (`userdata/<id>`, not 0; roots `~/.steam/steam`, `~/.local/share/Steam`, Flatpak `~/.var/app/com.valvesoftware.Steam/…`)

@@ -766,6 +766,16 @@ class SettingsDialog(QDialog):
         steam_btn.clicked.connect(self._add_to_steam)
         row.addWidget(steam_btn)
         lay.addLayout(row)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("When Steam starts it"))
+        self.steam_window = QComboBox()
+        self.steam_window.addItem("Normal window (every remote button works)", "wayland")
+        self.steam_window.addItem("Compatibility window (only if Big Picture shows no picture)", "x11")
+        self.steam_window.setCurrentIndex(max(0, self.steam_window.findData(self.s.get("steam_window", "wayland"))))
+        self.steam_window.setToolTip("The compatibility window can't receive some remote buttons, such as OK.\n"
+                                     "Use Enter on a keyboard instead if you need it.")
+        row.addWidget(self.steam_window, 1)
+        lay.addLayout(row)
         self._menu_ui()
 
         lay.addWidget(h2("TV library folders"))
@@ -1150,6 +1160,7 @@ class SettingsDialog(QDialog):
         self.s["ads_products"] = self.products.currentData()
         self.s["restricted_pin"] = self.pin.text().strip() or "69"
         self.s["relock_minutes"] = int(self.relock.currentData())
+        self.s["steam_window"] = self.steam_window.currentData()
         self.s["guide_preview_step"] = int(self.gpreview_step.currentData())
         self.s["guide_preview_seconds"] = int(self.gpreview_secs.value())
         settings.save(self.s)

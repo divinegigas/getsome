@@ -8,7 +8,10 @@ handled here or in getsome.sh:
     window and can't hand focus over, so the compositor's focus-stealing prevention keeps our
     fullscreen window *behind* Big Picture. Under Steam we therefore open an X11 window too,
     and raise it a few times while starting up.
-Overrides: GETSOME_STEAM_PLATFORM=wayland keeps Qt's normal choice; QT_QPA_PLATFORM always wins.
+Update (20 Nov): the X11 window made a remote's OK button stop working (X11 can't deliver key codes
+above 255; KEY_OK is 352), so on a Wayland desktop we now keep the Wayland window by default and keep
+X11 only as a setting (settings.steam_window = "x11") and in Game Mode (gamescope).
+Overrides: GETSOME_STEAM_PLATFORM=wayland|x11; QT_QPA_PLATFORM always wins.
 """
 
 from __future__ import annotations
@@ -34,13 +37,40 @@ def prepare_qt() -> None:
     if not from_steam():
         return
     e = os.environ
-    if not e.get("QT_QPA_PLATFORM") and e.get("GETSOME_STEAM_PLATFORM", "xcb") != "wayland" and e.get("DISPLAY"):
+    if not e.get("QT_QPA_PLATFORM") and window_type() == "x11" and e.get("DISPLAY"):
         import ctypes.util
 
         # Qt 6.5+ can't open X11 windows without libxcb-cursor (Fedora: xcb-util-cursor)
         if ctypes.util.find_library("xcb-cursor"):
             e["QT_QPA_PLATFORM"] = "xcb"
     _write_log()
+
+
+def game_mode() -> bool:
+    """Steam's Game Mode / gamescope session (Steam Deck, Bazzite): only X11 windows show there."""
+    e = os.environ
+    return bool(e.get("GAMESCOPE_WAYLAND_DISPLAY") or e.get("SteamDeck") == "1"
+                or "gamescope" in e.get("XDG_CURRENT_DESKTOP", "").lower())
+
+
+def window_type() -> str:
+    """Which window to open under Steam. "wayland" passes every remote button through (X11 drops
+    keys with codes above 255, such as a remote's OK = KEY_OK 352 and Select); "x11" is the fallback
+    if Big Picture shows sound but no picture. Game Mode always gets X11."""
+    e = os.environ
+    if game_mode():
+        return "x11"
+    forced = e.get("GETSOME_STEAM_PLATFORM", "")
+    if forced:
+        return "x11" if forced in ("xcb", "x11") else "wayland"
+    if not e.get("WAYLAND_DISPLAY"):
+        return "x11"                 # an X11 desktop: nothing to choose
+    try:
+        from . import settings
+
+        return "x11" if settings.load().get("steam_window") == "x11" else "wayland"
+    except Exception:
+        return "wayland"
 
 
 def _write_log() -> None:

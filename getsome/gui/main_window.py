@@ -82,6 +82,11 @@ class MainWindow(QMainWindow):
         self.build_all_btn = button("Build all changed")
         self.build_all_btn.clicked.connect(self._build_changed)
         ll.addWidget(self.build_all_btn)
+        rebuild = button("Rebuild all channels…")
+        rebuild.setToolTip("Rebuild every channel, e.g. after an update or after changing commercial settings.\n"
+                           "Shows that play in order keep their place.")
+        rebuild.clicked.connect(self.rebuild_all)
+        ll.addWidget(rebuild)
         self.new_eps_btn = button("Check for new episodes")
         self.new_eps_btn.setToolTip("Bought more of a series? This finds new episodes in shows that are\n"
                                     "already on channels and rebuilds those channels to add them.")
@@ -321,6 +326,21 @@ class MainWindow(QMainWindow):
                 self.list.setCurrentRow(i)
                 break
         self._select(self.list.currentRow())
+
+    def rebuild_all(self) -> None:
+        chans = [c for c in self.channels if c.has_content]
+        if not chans:
+            QMessageBox.information(self, "Rebuild all channels", "There are no channels with shows or films yet.")
+            return
+        mins = max(1, len(chans))
+        if QMessageBox.question(
+                self, "Rebuild all channels",
+                f"Rebuild all {len(chans)} channels now?\n\n"
+                f"This picks up updates and changed settings (like commercials). It can take about "
+                f"{mins} minute{'s' if mins != 1 else ''} (less if they were built before). "
+                "Shows that play in order keep their place, and your media is never changed.") != QMessageBox.Yes:
+            return
+        self._build(chans)
 
     def _build_changed(self) -> None:
         self._build([c for c in self.channels if self._state(c)[0] in ("not built", "needs build")])

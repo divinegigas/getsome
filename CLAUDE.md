@@ -24,7 +24,8 @@ scheduling and playback engine and adding a proper GUI and polish.
 - **Never touch the user's media**: channels use symlink folders under the FS42 work dir.
 - FS42 returns exit code 0 on failure, so check its output (see `builder._run`).
 - Keep sequential shows' positions across rebuilds: the builder's line-up pass, and `built_hash` / `start_pending`.
-- When a setting or cached format changes, bump its version (`library.CACHE_VERSION`, `assets_gen.MUSIC_VERSION`, `ads.ADS_VERSION`) so existing installs regenerate.
+- When a setting or cached format changes, bump its version (`library.CACHE_VERSION`, `assets_gen.MUSIC_VERSION`, `ads.ADS_VERSION`) so existing installs regenerate. When the cards in a channel's commercial pool change, bump `ads.POOL_VERSION`: it is part of the channel hash (`channel_writer.channel_hash`), so those channels show "needs build" and the owner just presses "Build all changed".
+- **No terminal needed**: everything the owner does must be possible from the GUI (Build all changed, Rebuild all channels…, Check for updates). Terminal commands are only a fallback in instructions.
 - The owner is not deeply technical. Give exact copy-paste commands (`cd ~/getsome` first), and explain *what changed and what to test* in plain terms.
 
 ## Tech stack
@@ -81,3 +82,4 @@ squashed to remove old personal details), it `reset --hard`s to the remote, expi
 `gc --prune=now`, so old versions disappear from the owner's computer too. Local edits to tracked files
 block both paths. A history rewrite is therefore safe to push **only after** the owner has installed an
 updater that has this (added 19 Nov 2026); never rewrite history otherwise, and keep a single branch.
+History was squashed to one commit on 20 Nov 2026 at the owner's request (old personal details removed).

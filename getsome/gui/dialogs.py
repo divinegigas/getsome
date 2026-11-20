@@ -905,7 +905,7 @@ class SettingsDialog(QDialog):
         self.products.setCurrentIndex(max(0, self.products.findData(self.s.get("ads_products", "few"))))
         row.addWidget(self.products, 1)
         lay.addLayout(row)
-        lay.addWidget(hint("For channels with “Commercial breaks” ticked. Rebuild those channels after changing this."))
+        lay.addWidget(hint("For channels with “Commercial breaks” ticked. Rebuild after changing this (Maintenance → Rebuild all channels, below)."))
 
         lay.addWidget(h2("Restricted channels"))
         row = QHBoxLayout()
@@ -969,6 +969,12 @@ class SettingsDialog(QDialog):
             tidy = button("Clean up channels…")
             tidy.clicked.connect(parent.cleanup)
             row.addWidget(tidy)
+            lay.addLayout(row)
+            row = QHBoxLayout()
+            row.addWidget(QLabel("Rebuild every channel (after an update or a commercials change)"), 1)
+            rb = button("Rebuild all channels…")
+            rb.clicked.connect(lambda: (self._save_settings(), parent.rebuild_all()))
+            row.addWidget(rb)
             lay.addLayout(row)
 
         lay.addStretch(1)

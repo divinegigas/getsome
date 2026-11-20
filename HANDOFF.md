@@ -235,6 +235,13 @@ TV mode. See `CLAUDE.md` for the brief and the ground rules, and
   tvshow.nfo's cast "… stars as <role> …"). `show_facts` now takes the channel number. Needs a rebuild.
   The demo now writes an invented cast into its NFOs.
 
+**Session 4, later:** git history squashed to one "Fresh start" commit (owner asked; the new updater
+follows it). **Rebuild all channels…** button under the channel list and in Settings → Maintenance
+(`MainWindow.rebuild_all`, asks first). Channels with commercial breaks now include `ads.ADS_VERSION`,
+`ads.POOL_VERSION` and the product-ads setting in their build hash, so updates/settings that change the
+commercials mark them "needs build" automatically (this update does that once for every commercial channel).
+**Next topic under discussion: auto-populate channels from a library** (see Next steps).
+
 ## Decisions made (and why)
 - **Our own Qt front end over an unmodified FS42 submodule** (owner approved). FS42's player can't layer neon and static over video cleanly. FS42 can still be updated by bumping the submodule; only `getsome/fs42.py` should need changes.
 - **Symlink folders per show**, named `Show Title - S01E02.ext`, built from the NFO season and episode numbers. FS42 sorts sequences by path (which would put Season 10 before Season 2) and takes titles from file names. Specials (season 0), extras and trailers are skipped. Folders without NFOs play in natural name order, and the HUD shows the cleaned file name.

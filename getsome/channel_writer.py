@@ -423,10 +423,23 @@ def conf_hash(conf: dict) -> str:
     return hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()[:16]
 
 
+def channel_hash(ch: model.Channel, conf: dict) -> str:
+    """What a build depends on: the FS42 conf, plus, for channels with commercial breaks, the
+    commercials' version and the product-ads setting. So an update that changes the commercials
+    (ads.ADS_VERSION / ads.POOL_VERSION) or a settings change marks those channels "needs build"."""
+    h = conf_hash(conf)
+    if has_ads(ch):
+        from . import ads
+
+        extra = f"{h}|{ads.ADS_VERSION}|{ads.POOL_VERSION}|{_products()}"
+        h = hashlib.sha1(extra.encode()).hexdigest()[:16]
+    return h
+
+
 def preview_hash(ch: model.Channel) -> str | None:
     """Hash of the conf this channel would produce, without touching disk (None if it can't)."""
     try:
-        return conf_hash(make_conf(ch))
+        return channel_hash(ch, make_conf(ch))
     except Exception:
         return None
 
@@ -454,7 +467,7 @@ def write_conf(ch: model.Channel, on_line=None, alt_starts: dict | None = None) 
     p = conf_path(ch)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"station_conf": conf}, indent=2))
-    return conf_hash(conf)
+    return channel_hash(ch, conf)
 
 
 def remove_conf(name: str) -> bool:

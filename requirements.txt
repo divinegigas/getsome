@@ -1,0 +1,17 @@
+# GetSome
+PySide6>=6.8
+python-mpv>=1.0.6
+numpy
+jeepney             # D-Bus: keep the computer awake while watching
+# FieldStation42 (vendor/FieldStation42/install/requirements.in, minus the
+# Raspberry Pi-only evdev/pyserial which need a compiler to install)
+pillow
+python-mpv-jsonipc
+rich
+textual
+ffmpeg-python
+fastapi
+uvicorn
+jsonschema
+requests
+mutagen

@@ -1,0 +1,367 @@
+# Neon Cable 42 (formerly GetSome): handoff notes
+
+**Name:** the owner renamed the product to **Neon Cable 42**. Every visible string uses
+`paths.APP_NAME` or the literal name (window titles, logo, guide, ads, teletext "NC42 TEXT", app-menu
+entry, notifications, icon shows "42"). Internal names stay `getsome` for now: the package, `getsome.sh`,
+env vars `GETSOME_*`, `~/.local/share/getsome` (FS42 schedules and catalog store absolute paths under it,
+so moving it would force full rebuilds) and `~/.config/getsome`. Rename those during the AppImage move,
+with a one-time migration (move the folders, then rebuild every channel).
+
+_State at the end of the third session (19 Nov 2026), branch `claude/cable-tv-gui-review-gdkexf`. A fresh
+session should start from the prompt in `docs/NEXT_SESSION_PROMPT.md`._
+
+GetSome is a 90s-cable-style TV for a local Linux media library, built on an
+**unmodified** FieldStation42 (FS42) submodule. There's a native setup window plus a fullscreen
+TV mode. See `CLAUDE.md` for the brief and the ground rules, and
+`docs/STEP0_REVIEW_AND_PLAN.md` for the original review and plan.
+
+## Phase status
+
+| Original plan phase | Status |
+|---|---|
+| 1 TV-mode MVP | ✅ done, confirmed by the owner on Fedora (picture, sound, static, live tune-in) |
+| 2 AppImage for Bazzite | ⏸ **deferred by the owner** ("Fedora first") |
+| 3 Setup GUI | ✅ done |
+| 4 Time blocks + broadcast hours + off-air modes | ✅ done · not yet reported on by the owner |
+| 5 Guide, overrides, settings, key-remap screen | ✅ guide, overrides and settings · ❌ remap screen (JSON file only) |
+| 6 Stretch: commercials at real break points | ✅ v2: cards (promos, trivia, lineups, on this day), five-beat product ads, six music styles · owner liked promo cards, found v1 product ads weak; **v2 not yet reported on** |
+| Session 3 | ✅ Steam Big Picture fix (confirmed), restricted channels with PIN + lock schedule, artwork cards + transitions |
+| Added along the way | ✅ movie channels, films in TV channels, up-next bumpers, 5 intermission looks, audio/subtitle menu, 20 guide tracks (RPG + metal/rock/punk/reggae/ska), guide preview window + sound toggle, exit menu, keep-awake, every-episode rotation, clean-up tool, new-episode check, usage dots in pickers, one-click updater, app menu + desktop shortcut, rename to Neon Cable 42 |
+
+## What's built (and working)
+
+**Setup window** (`./getsome.sh` → `getsome/gui/`), styled as an 80s vision of the future (synthwave, neon, chrome):
+- Channel list on the left (with a draggable divider) and the editor on the right. Edits auto-save to `~/.local/share/getsome/channels.json`. A channel shows "needs build" until it's built.
+- Styles: **Series Marathon** (in order), **Shuffle Classics**, **24-Hour Mix** (order chosen per show), **Movie Channel**.
+- Per show: order (channel default / in order / shuffle) and **Start at**, a searchable ▸ episode picker.
+- **Switch shows** every episode, or every 1–6 h (rotation between in-order shows and the shuffle pool).
+  Also per time block.
+- **Start times**: back to back / on the half hour / on the hour. Timed channels fill the gap with a live intermission screen.
+- **Up-next bumpers** checkbox (back-to-back channels only).
+- Show picker: search, genre filter (from `tvshow.nfo`), tick/untick all shown, "Add any folder…". If that folder holds several shows, it offers to add them separately.
+- Movie picker: search, genre and decade filters, tick all shown, add any folder (no NFO needed).
+- TV channels can include films (**+ Add movies**). The films rotate as one "Movies" entry, in release order or shuffled.
+- **Time blocks & broadcast hours** (button on each channel → "THE WEEK", `gui/schedule_editor.py`):
+  a 7-day grid laid out like a TV listing (columns are broadcast days, 6 AM to 6 AM). Drag across it
+  to make a block, click a block to edit it. A block has days (presets: every day / weekdays / weekends),
+  whole-hour start and end (may run past midnight), its own shows and/or films, play order, per-show
+  order and start episode, and "switch shows every N hours". Overlapping blocks are refused.
+  Hours outside blocks play the channel's regular show list; a channel with no regular shows is
+  off the air outside its blocks.
+- **Broadcast hours**: "Sign off at night", on the air from/to, optional "Good night" sign-off clip,
+  and an off-air mode: bars + 1 kHz tone, static, or a folder of infomercials (shown as
+  "Paid Programming", no sign-off). Blocks always air, even outside broadcast hours.
+- **Schedule upkeep** (`upkeep.py`): when the setup window opens, when TV mode starts and hourly while it
+  runs, and on `getsome upkeep`. Extends schedules ending within 3 days; **rebuilds** ones that already
+  ended, with in-order shows resuming after the last episode the old schedule aired.
+- **Settings → Updates → "Check for updates"** (`updater.py`): `git fetch`, lists the new commit
+  messages, `git pull --ff-only`, refreshes the FS42 submodule, then restarts through `getsome.sh`
+  (which installs new Python packages if `requirements.txt` changed). Refuses (with a plain message)
+  if tracked program files were edited locally. Never prompts for a password (`GIT_TERMINAL_PROMPT=0`).
+  **Commit messages are what the owner sees as "What's new"**, so keep them plain and readable.
+- **Show/movie pickers show where things already play**: a green dot = on a channel (hover lists the
+  channels and time blocks), yellow = not on any channel; a filter "Everything / Not on any channel yet /
+  Already on a channel" (`dialogs.library_usage`, `mark_usage`).
+- **Check for new episodes** (channel list button; also a quiet check after upkeep when the setup window
+  opens, which turns the button pink: "New episodes found (N shows)…"). `new_episodes.py` compares each
+  show folder used on a channel with the real files that channel has linked under its catalog folder
+  and offers to rebuild just those channels (`BuildDialog`); the picker's cached counts are refreshed.
+  A show is only re-read when its folder or a season folder's mtime changed since the last clean check
+  (`~/.local/share/getsome/episode_check.json`). Rebuilds already re-read folders, so in-order shows keep
+  their place and new episodes slot in by number. New *shows* still come from Rescan in "Add shows".
+- "Every episode" folders now run `lcm` of the show lengths rounds (capped at 30 000 links) so a
+  shorter show never repeats an episode where the folder loops.
+- **Settings scrolls** (it outgrew a 1080p screen, which hid the App menu button at the bottom); Save /
+  Cancel stay fixed. **Settings → Shortcuts** is now first: app menu entry and a **desktop shortcut**
+  (`desktop.install_desktop_shortcut`, executable + `gio` trusted). Menu refresh runs
+  `update-desktop-database`, `kbuildsycoca6/5` (KDE Plasma caches its menu) and `xdg-desktop-menu`.
+  The setup window offers the app-menu entry once on first open (`settings.menu_offered`).
+- **App menu entry** (Settings → Shortcuts, or `getsome add-to-menu` / `remove-from-menu`; `desktop.py`):
+  `~/.local/share/applications/getsome.desktop` in Sound & Video, with right-click actions Watch TV /
+  Channel setup and a neon TV icon drawn in code (`~/.local/share/getsome/icon/getsome.png`). Both
+  windows call `setDesktopFileName("getsome")` so GNOME groups them under the icon; the entry is
+  refreshed on start if the checkout moved. `getsome.sh` shows a desktop notification on missing
+  ffmpeg/libmpv when there's no terminal.
+- Settings: TV and movie library folders, launch straight into TV (off by default), guide channel number (0 = off), guide music, hardware decoding, volumes.
+- Build dialog: progress bar, step text and a details log. Real FS42 errors are surfaced.
+
+**TV mode** (`./getsome.sh tv`, `getsome/tv/`):
+- One embedded libmpv instance (render API in a `QOpenGLWidget`), so only the current channel decodes.
+- Live tune-in at the correct offset. Drift is corrected after loading, and a watchdog resyncs if playback stalls or drifts more than 3 s. The segment timer is a `PreciseTimer`.
+- Procedural static with a hiss (the hiss is a second, audio-only mpv). Neon channel numbers with a CRT colour split and etched scanlines.
+- HUD banner: channel · show · episode code and NFO title (or a movie's year, rating, runtime and genre) · up next.
+- **Guide channel** (default 2): a scrolling grid for every channel, a rotating "NOW ON" box, a clock, and "♪ now playing".
+- **Up-next bumpers**: about 10 s each, three animated styles drawn live over generated jingle clips, so they always name the real next show.
+- **Intermission** on timed channels: next feature, countdown, what's later, and music.
+- **MENU** key: audio track and subtitle picker; choices persist as preferred languages. On the guide, MENU picks the music.
+- Keys: PgUp/PgDn, ↑/↓, number keys, L (previous channel), I (info), M, [ and ], F, Menu/O/Tab.
+  **BACK** (Backspace, Back, Esc, Q or Stop) opens the **exit menu**: Back to TV / Quit to setup /
+  Quit to desktop (closes after 20 s untouched). Remappable in `~/.config/getsome/keymap.json`
+  (action `back`). Buttons with no action are logged as "unassigned key" to help map IR remotes.
+- Exit menu plumbing: "Quit to setup" just ends TV mode when the setup window started it
+  (`GETSOME_FROM_SETUP=1`; the window comes back to the front); when TV was started on its own it
+  `execv`s `getsome setup`. "Quit to desktop" exits with code 10 (`EXIT_TO_DESKTOP`) and a setup
+  window that started TV closes too.
+- **Keeps the computer awake** while TV mode is on (`tv/awake.py`, D-Bus via `jeepney`): GNOME
+  SessionManager (idle + suspend), freedesktop ScreenSaver, KDE PowerManagement, and logind
+  `idle:sleep`. All are released automatically if the process dies. Settings: "Keep the computer awake
+  while watching TV … until no button is pressed for N hours" (default 4, like a TV's auto-off).
+- **Guide preview window** (top right of the guide): a second, muted, audio-less libmpv instance
+  (`MpvWidget.enable_preview`) renders into a 640x360 FBO in the same GL context; the frame is read back
+  (`preview_image`) and painted by `GuideRenderer._preview`. It tunes a channel live every N seconds
+  (settings `guide_preview`, `guide_preview_seconds` = 8, `guide_preview_step` = 1/2/3/5), starting
+  with the channel you came from, with a static burst between channels. It is stopped (`stop_preview`)
+  as soon as you leave the guide, so outside the guide only the current channel decodes. The guide
+  grid now starts lower (shorter), with smaller rows, and scrolls at 22 px/s (was 38).
+- **Clean up channels…** (channel list, and Settings → Maintenance; `cleanup.py`): finds leftover FS42
+  configs not in the channel list (the cause of a "second channel 9" after a failed first build and a
+  rename), channels whose build never finished, empty channels, and duplicate/guide-clashing numbers;
+  fixes the ticked ones. Builds now drop leftover configs on the same number first, and a failed
+  *first* build removes its half-made config.
+- **"Switch shows every episode"** (`rotate_hours = 0`, channel or block): FS42 has no strict
+  per-episode rotation (only random picks or splitting each hour by the clock), so `channel_writer._link_alt`
+  writes one interleaved folder per context (`Alternating`, `Alternating_<block id>`) with links
+  `NNNNN Show - S01E02.ext` (one entry of each show in turn; shorter lists wrap round; shuffled entries
+  are shuffled at build time) and FS42 plays it as a single sequence. Before each rebuild
+  `builder._alt_starts` finds where every in-order show is up to (start_pending pick → its old hourly
+  sequence → the old interleaved folder → its start episode) and whose turn it is (`__first__`), and
+  the folder is written starting there; the sequence then starts at index 0. Show tags used only inside
+  an interleaved folder aren't linked separately (`Plan.used`). `fs42.display_title` strips the
+  `NNNNN ` prefix; films in an interleaved folder are recognised by having no SxxEyy code.
+- **Guide music in every style**: ten full-length (150 s) genre tracks (`assets_gen.GENRE_TRACKS`, two
+  each of metal, rock, punk, reggae, ska) composed by the background composer with `beds.compose`.
+  "Shuffle all (every style)" mixes them with the ten RPG tracks; "Shuffle RPG tracks only" keeps the old
+  rotation. Long pieces change section every 8 bars (new chords + motifs, same key/tempo) with a drum
+  breakdown in the third section.
+- **Music beds** (`beds.py`): original short pieces in six styles: jrpg, metal, rock, punk, reggae
+  (one-drop, skank, melodica) and ska (upstrokes, walking bass, horn stabs), each with its own groove and
+  a seeded motif lead. Used by every card and product ad (each clip a different style) and, as 60 s
+  loops in `runtime/beds/`, by intermissions (picked per gap from beds + the guide's RPG tracks).
+- **Commercial pool v2** (`ADS_VERSION 4`): mostly **cards** now: show promos, **"Did you know?"
+  trivia** built only from the owner's NFOs (premiere date + network, cast roles, seasons and years from
+  episode `<aired>`, first episode, most frequent director, longest season, episode count; films:
+  director, tagline, cast, studio), **"Tonight on N" lineups** (live from the schedule) and **"On this
+  day / This week in TV history"** (episodes first aired on today's date, from `cards.json`'s
+  `onthisday` table). Product ads are proper five-beat commercials (hook, reveal, selling points,
+  testimonial with a cartoon face, price slam + call to action); Settings → Commercial breaks →
+  "Fake product ads: A few (5 per channel, default) / Lots / None". Card carrier clips are
+  `runtime/ads/card_<genre>_<15|20>_<n>.mp4`; per-channel links `card_*` + `cards.json`
+  (old `promo_*` + `promos.json` from v1 still play until a rebuild).
+- **Commercials** (per channel, off by default; editor row "Commercial breaks"): `ads.py` + `tv/ads_paint.py`.
+  * Pool: 14 invented 90s/2000s products (food, soda, tech, kids, local, "hero" looks), channel IDs
+    (2–10 s), one promo per show (title/year/genres/plot from `tvshow.nfo`, local `poster.jpg` /
+    `fanart.jpg`, "TONIGHT AT 9:00 PM" looked up live), plus the owner's own ad folder (`own_*`).
+    Generated ones are jingle carrier clips (`runtime/ads/`, `ADS_VERSION`) drawn over live, like
+    the up-next bumpers. Per channel `fs42/ads/<slug>/` holds symlinks + `promos.json`; FS42
+    `commercial_dir` points there. Break stings ("We'll be right back" / "Now back to…" / "Stay
+    tuned") are FS42 pre/post bumps in `runtime/breakbumps/{pre,post}/`; TV mode only says "back to"
+    when the show really comes next.
+  * Placement: conf `commercial_free: false`, `break_strategy: standard`, `break_duration: 60`.
+    FS42 cuts at chapter markers, else fades to black (`-b`, opt-in "also at fades to black", slow,
+    cached). **A file with neither would be split evenly by FS42 (arbitrary moments, against the
+    brief)**, so `builder._find_breaks` writes a whole-file chapter marked `getsome_end_only`
+    (`fs42.mark_end_only`, via FS42's own `FluidStatements`) → all its ads go at the end. Those
+    markers are cleared before a fade-to-black scan. Note FS42 puts a single break at the end, so a
+    file needs at least 2 usable chapter boundaries (and enough ad time) for a mid-show break.
+  * Room for ads: FS42 only makes ad time by rounding a show up to the schedule increment, so a
+    back-to-back channel with commercials uses increment 5 (shows start on 5-minute marks; ~2–6 min
+    of ads each). Timed channels fill their gap with ads, leftovers fall to the intermission/BRB slate.
+- **Intermissions come in five looks**, picked per gap (`tv/intermissions.py`): sunset (original),
+  film leader, movie-palace marquee, hyperspace, and a teletext-style text page listing the next few
+  programmes. The wording switches between films and TV episodes.
+- Off-air: SMPTE bars with a 1 kHz tone, or static, per channel; the INFO banner says when it's back.
+
+**Engine glue**:
+- `fs42.py` is the only module that touches FS42 internals.
+- `channel_writer.py` turns a channel into FS42 JSON plus per-show symlink folders.
+- `builder.py` runs FS42 builds for each channel, then lines up in-order shows with the clock.
+- `media_index.py` reads TV and movie NFOs; `library.py` keeps the scan caches; `assets_gen.py` generates runtime media.
+- `music.py` and `synth.py` compose the guide tracks and jingles in code.
+
+**CLI**: `getsome setup|tv|demo|scan|add-channel|remove-channel|list|build [NAME…]|extend|upkeep|compose-music`.
+
+**Session 3 additions**:
+- **Steam** (`steam.py`, `getsome.sh`): owner reported Big Picture → sound but no picture. Under Steam
+  (`SteamGameId`/`SteamAppId`/`SteamOverlayGameId`/`SteamEnv`), `getsome.sh` drops
+  `gameoverlayrenderer.so` from `LD_PRELOAD` and restores `SYSTEM_LD_LIBRARY_PATH`; `steam.prepare_qt()`
+  forces `QT_QPA_PLATFORM=xcb` (Steam is an XWayland window and can't hand Wayland focus over, so KWin
+  kept our fullscreen window behind Big Picture), only if libxcb-cursor exists; TV mode raises/activates
+  itself at 0.3/1.2/3/6 s; with no subcommand it opens TV mode. Writes
+  `~/.local/share/getsome/logs/steam_launch.log`. Overrides: `GETSOME_STEAM_PLATFORM=wayland`,
+  or set `QT_QPA_PLATFORM` in Steam's launch options. **Not testable in the sandbox: needs owner's verdict.**
+- **Restricted channels**: `Channel.restricted` (editor checkbox next to Time blocks; no rebuild),
+  `settings.restricted_pin` (default "69", Settings → Restricted channels). TV mode (`app._apply_lock`):
+  mpv `vf=lavfi=[scale=160:-2:flags=area,boxblur=6:3]` + `hwdec=no` + mute while locked; overlay
+  `overlays.paint_lock` (padlock, "RESTRICTED", PIN dots); bumper/intermission/card overlays are not
+  drawn while locked; info banner says "Restricted channel"; guide hides its titles
+  (`GuideRenderer.hidden`) and the preview window skips it. OK (or M) opens the PIN pad; digits, OK,
+  Left = delete, Back = cancel, channel keys close it and tune. One correct PIN unlocks all restricted
+  channels until TV mode closes (`TVWindow.unlocked`).
+  **Lock schedule** (owner request): `Channel.lock_mode` "always" | "hours" with `free_from`/`free_to`
+  (whole hours, may wrap midnight; `Channel.locked_at(hour)`). Editor row: "Restricted … all day /
+  except from [9 PM] to [6 AM]". TV mode re-checks every 20 s (`_check_lock_schedule`), so a channel opens
+  and re-locks by itself while you watch; the lock panel and banner say "Opens by itself at 9 PM".
+  **Silent relock** (`TVWindow._tick_relock`, setting `relock_minutes`, default 120, 0 = never; Settings →
+  Restricted channels "Lock again after … away from them"): after the PIN, restricted channels lock again
+  once that many minutes *in a row* were spent on non-restricted channels (guide included). Being on any
+  restricted channel resets the count, so staying on one keeps them open indefinitely. No message on relock.
+- **Age ratings in the pickers**: `media_index.clean_rating` (`<mpaa>`/`<certification>`, prefers the
+  `US:` entry, strips `Rated `/country prefixes), `Show.rating` / `LibShow.rating` (`CACHE_VERSION` 3,
+  movie cache now versioned too → one rescan). `dialogs.mark_usage` draws the usage dot + the rating in
+  **plain text** as one icon (`_badge`, `BADGE_SIZE`) so ratings line up like a column; the owner asked for
+  no colour coding (colour stays the dots' meaning). Tiers (`rating_tier`, also numeric ages like FSK 16)
+  only drive the filter. "All ratings" filter combo in both pickers.
+  Blur softened after owner feedback ("a vague idea of the content"): `scale=200 + boxblur=4:2`, veil alpha 70.
+- **Artwork** (`artwork.py`, `tv/art_paint.py`): finds TMM/Kodi art (poster, fanart, clearlogo/logo,
+  banner, landscape, clearart, `<episode>-thumb.jpg`; films `<stem>-poster.jpg` …), cached.
+  `artwork.for_programme(path)` resolves a catalog symlink to the show/film. Uses: break stings over the
+  show's backdrop + logo (`sting_art`), ~half of up-next bumpers get style `"art"` when the next show has
+  fanart or a logo (`upnext_art`, seeded by start time), and new pool cards (`ads.link_pool`):
+  `card_spot_<tag>` (spotlight, 15 s), `card_stills_<tag>` (filmstrip of up to 6 episode stills with NFO
+  titles, 20 s, needs ≥3 thumbs), `card_wall_N` (channel ID over scrolling poster columns, needs ≥2 posters).
+  `ads_paint._image` now decodes at most 1920 px (posters on the wall 480 px) into a 90-entry LRU.
+  The demo generates fake art for three of its four shows. New cards need a channel rebuild.
+
+**Session 4 (20 Nov) tweaks** (owner feedback: everything working; asked for these):
+- Generated ads, cards, IDs and break stings at a third of the volume: `ads.AD_VOLUME = 0.33` applied when
+  the carrier clips are encoded, `ADS_VERSION` 5 (regenerated on the next build; ~-9.6 dB measured).
+  Up-next bumpers, intermission beds and the owner's own ad clips are unchanged.
+- Promo card ("coming up … tonight at 9:30", the owner's favourite): the live `find_when` lookup also
+  fills `next_ep` (code · episode title) and `next_plot` (that episode's NFO `<plot>`, via
+  `ads.episode_details`), drawn under the genres in place of the show's plot (which stays the fallback).
+- Trivia: the episode-count facts ("this channel has N episodes", "season N is the longest") are gone, and
+  "role is played by name" was replaced by "<actor> (<role>) stars in [all] N episodes of <show>. Catch them
+  all here on Channel N!" (counted from `<actor>` in the episode NFOs, top 4 with ≥2 episodes; falls back to
+  tvshow.nfo's cast "… stars as <role> …"). `show_facts` now takes the channel number. Needs a rebuild.
+  The demo now writes an invented cast into its NFOs.
+
+## Decisions made (and why)
+- **Our own Qt front end over an unmodified FS42 submodule** (owner approved). FS42's player can't layer neon and static over video cleanly. FS42 can still be updated by bumping the submodule; only `getsome/fs42.py` should need changes.
+- **Symlink folders per show**, named `Show Title - S01E02.ext`, built from the NFO season and episode numbers. FS42 sorts sequences by path (which would put Season 10 before Season 2) and takes titles from file names. Specials (season 0), extras and trailers are skipped. Folders without NFOs play in natural name order, and the HUD shows the cleaned file name.
+- **Display titles come from our NFO data**, not FS42's: FS42 title-cases names ("Bob'S Burgers").
+- **Sequence line-up after every build**: FS42 starts new schedules at **midnight**, so a channel built in the evening has already "used up" episodes, and rebuilds would skip ahead. `builder.py` measures which episode airs next and shifts FS42's sequence index, normally in one extra pass.
+- **FS42 exits 0 even when a step fails**, so `builder._run` parses its output for "Failed to…" and "Error…".
+- **Commercial-free scheduling for now** (`schedule_increment` 0 for back to back, 30 or 60 for timed starts). Timed gaps fall through to `be_right_back_media` (`runtime/intermission.png`) because the channel's `bump_dir` points at `runtime/nobumps/`, which holds only a 3-hour placeholder clip that never fits a gap.
+- **Up-next bumpers** are FS42 `end_bump`s pointing at `runtime/upnext/` (10 s jingles). TV mode recognises `upnext_N.mp4` and draws the matching animation.
+- **Software video decoding by default** (`hwdec: no`), with "auto-safe" as an option. The black-frame scare during development turned out to come from the sandbox's software GL, not from hwdec.
+- **Guide music**: 10 *original* tracks in an RPG synth/metal style. Copyrighted melodies are never reproduced (owner understands). The composer runs as a separate low-priority process with pid-checked locks, writes about 1 MB of `.m4a` per track, and logs to `~/.local/share/getsome/logs/music.log`.
+- **Bumper visuals are drawn live** rather than pre-rendered, so they're always accurate, even when you tune in mid-bumper.
+- **Fonts**: Monoton and Tilt Neon (SIL OFL), bundled. VCR OSD Mono was avoided because its license isn't open.
+
+- **Time blocks map onto FS42's hourly slots** (`channel_writer.plan` / `make_conf`). Every show folder
+  used anywhere on a channel (rotation or blocks) is **one** FS42 tag, so an in-order show keeps a single
+  place in its sequence wherever it airs. Block films get their own tag `Movies_<block id>`
+  (`fs42._is_movie` matches both). Infomercials are tag `Infomercials`. `week_grid()` is the single
+  source for what each hour holds; the GUI draws it, `make_conf` turns it into slots.
+- **Sign-off** is FS42's `{"event": "signoff"}` on the first off-air hour after on-air hours; the other
+  off-air hours are left empty, so FS42 plays `off_air_video` (`bars_tone.mp4` or `static.mp4`).
+- **Line-up with blocks** (`builder.py`): "what airs next" only counts programmes starting in the hours
+  where that show runs as a sequence (`_sequence_hours`, read from the conf), looks 8 days ahead so weekly
+  blocks are found, and only shows that were already in order keep a place (a shuffled show switched to
+  in order starts at its start episode).
+- **Upkeep and builds share a pid lock** (`upkeep.schedule_lock`, file `fs42/upkeep.lock`), so the setup
+  window and TV mode never run FS42 on the same channel at once. A rebuild of an expired channel
+  applies any unbuilt edits too.
+
+## Known issues / risks
+- **Untested by the owner**: the audio/subtitle menu on real multi-language files, the hwdec option, the IR remote (key names not yet reported), the movie-channel intermission at real lengths, and the mixed films + shows channel.
+- **Untested by the owner (newest, commercials)**: real chapter files, the fade-to-black scan on the
+  real library (could take hours the first time), ad-pool variety over a long evening (FS42 sometimes
+  repeats an ad within one break), promo artwork from real TMM folders.
+- **Untested by the owner (newer)**: keep-awake on real GNOME/KDE (tested only against a mock D-Bus;
+  logind could not be tested in the sandbox), the exit menu with the IR remote's back button, the new
+  intermission looks on a real TV.
+- **Untested by the owner (new)**: time blocks, broadcast hours, sign-off, the static and infomercial
+  off-air modes, and schedule upkeep on a real library.
+- **Back-to-back channels don't start blocks exactly on the hour**: the programme running at 7:58 finishes
+  first, so an 8 PM block may begin at 8:10. Choose "On the hour" start times for punctual blocks.
+  Likewise sign-off waits for the current programme to end.
+- Blocks are whole hours only (FS42 schedules in hourly slots).
+- Broadcast hours are the same every day (no separate weekend hours yet).
+- If a schedule expired while the external drive is unplugged, the upkeep rebuild fails (logged) and the
+  channel stays off air until the drive is back and the setup window or TV mode is opened again.
+- With a small selection, FS42's random pick can repeat a film twice in a row.
+- With very short content (under about 15 min), timed channels quantize to 5-minute starts (FS42 `_calc_target_duration`).
+- The guide fetches at most 40 programmes per row; fine for real lengths, but cluttered with tiny demo clips.
+- Multi-episode files take the first `<episodedetails>` block for their numbering.
+- The first library scan of a big external drive takes about a minute (cached afterwards). The library cache is versioned (`CACHE_VERSION = 2`) so new fields trigger a rescan.
+- `start_pending` on the in-order Movies pseudo-entry is unused: it always resumes, or starts from the earliest film.
+- Build time: roughly 1 minute per channel the first time, mostly FS42 probing files (cached afterwards). The line-up pass adds one more `-x`/`-w` round.
+- Dev sandbox only: Xvfb sometimes dies between long jobs (restart it), and llvmpipe randomly renders mpv video black for a whole run (standalone mpv does the same). Neither applies on real hardware.
+
+## Owner feedback
+**Session 3 feedback (19 Nov):** in-between bumpers good; trivia, upcoming shows and everything using
+their artwork "looks great"; generated product ads "comically bad", leave them for now (they plan to
+collect real commercials for the own-ads folder), lean on title cards and artwork transitions instead
+(done). Adding to Steam works, but Big Picture launch gave sound and no picture (fix pushed, awaiting test).
+
+**Confirmed working by the owner:** clean-up button, guide preview window, the usage dots in the pickers,
+the new-episode check, every-episode rotation, schedule upkeep, update button, exit menu.
+
+**Still open / waiting on:**
+- ✅ Steam Big Picture: owner says "flawless". ✅ Restricted channels look good (asked for softer blur
+  and lock schedules: done, awaiting their check).
+- Artwork cards/transitions on the real library.
+- Verdict on the six music styles. Earlier music note: "could be more metal and muddy".
+- Whether the app-menu entry now shows in their start menu (Settings used to be taller than the screen,
+  hiding the button; fixed, plus a KDE menu refresh). The owner seems to be on **KDE Plasma** ("start
+  menu", "Multimedia" folder).
+- IR remote: key names never reported; the exit menu listens on Backspace / Back / Esc / Q / Stop.
+
+## Next steps (recommended order)
+1. **Owner feedback round** on Steam, PIN lock and artwork cards; tune whatever they flag. Possible
+   follow-ups: "Fake product ads" default to None once their own ad folder exists; an artwork intermission
+   look for movie channels (poster + fanart); lock badge on restricted rows in the guide.
+2. **Key remap screen** ("press a button to assign"), editing `~/.config/getsome/keymap.json` from
+   Settings and/or TV mode. Useful for the IR remote and for Steam controller layouts.
+3. **Add to Steam** (asked for; "might help with the living-room experience"). Two levels:
+   * *Already possible by hand*: Steam → Games → "Add a Non-Steam Game to My Library" lists desktop apps,
+     and Neon Cable 42 is one once it's in the app menu. Launch options `tv` start straight in TV mode.
+   * *A button* (moderate): write an entry into `~/.steam/steam/userdata/<id>/config/shortcuts.vdf`
+     (binary VDF; Flatpak Steam lives under `~/.var/app/com.valvesoftware.Steam/`), for every Steam user
+     id, **only while Steam is closed** (it rewrites the file on exit). Exe `getsome.sh`, LaunchOptions
+     `tv`, generated library art in `userdata/<id>/config/grid/` (capsule, hero, logo, icon: draw them
+     in code like the app icon). Plus a recommended **Steam Input** layout mapping the controller to our
+     keys (d-pad up/down = channel, A = OK, B = Back, Start = Menu, etc.). Gamepad support directly in
+     TV mode (Qt Gamepad / SDL) would be the next step after that.
+4. **Commercials follow-ups**: facts ticker on movie-channel intermissions, per-show "no breaks"
+   toggle, avoid repeating an ad within one break, more product scripts.
+5. **AppImage: owner's privacy requirements (agreed 19 Nov, must be done as part of the AppImage release):**
+   * **Fully offline.** Audit before shipping: no network code anywhere except the update check, and that
+     only when the owner presses the button (no automatic check, no telemetry, no crash reporting). Bundle
+     every Python package so first run needs no pip download. Grep the bundle for `urllib`, `requests`,
+     `socket`, `http`, and check FS42's code paths we use (we never start its web server).
+   * **Scrub the owner's personal details from the repo docs**: CLAUDE.md "Owner's setup" was already made
+     generic (19 Nov: drive path, user name and hardware removed); re-check, plus HANDOFF.md "Owner
+     feedback" and any notes about their library or viewing.
+     Keep only how the app works. Note that the old text stays in git history and on GitHub (the repo is
+     **public**) unless history is rewritten; offer that, or the owner can make the repo private.
+     Don't add new personal details to the docs from now on.
+   * If the repo is made private, the git updater needs the owner's computer signed in to GitHub
+     (`gh auth login` + `gh auth setup-git`); `updater._git` now says so on auth errors. The AppImage
+     updater must handle this too (or download releases another way).
+6. **AppImage** (deferred phase 2; owner wants it after testing commercials): bundle CPython, PySide6,
+   libmpv, ffmpeg and FS42; static runtime; test on Bazzite. **Must include a real update button** (the
+   current one is git-based and won't work inside an AppImage): e.g. check a release feed, download the
+   new AppImage next to the old one, verify it, swap and restart (or AppImageUpdate/zsync). Also do the
+   internal getsome → neon-cable-42 rename with the data-folder migration then.
+
+**Long-term goals (owner's wishlist, not scheduled):**
+- **Plasma Bigscreen integration** (KDE's TV/10-foot interface; the owner hasn't set it up yet): appear
+  as a Bigscreen app with a proper tile, remote/gamepad navigation in the setup window, maybe launching
+  straight into TV mode.
+- Steam Big Picture / Steam Deck-style living-room polish, building on item 3.
+
+## How to verify quickly (dev)
+```bash
+Xvfb :99 -screen 0 1280x720x24 &                 # sandbox only
+export DISPLAY=:99 GETSOME_DATA_DIR=/tmp/gs XDG_CONFIG_HOME=/tmp/gscfg
+python3 -m getsome demo                          # fake library + 3 channels, built
+python3 -m getsome list
+python3 -m getsome tv --windowed                 # or drive TVWindow from a script and grab frames
+python3 -m getsome upkeep                        # top up / rebuild schedules
+# time travel for schedule tests (apt install faketime): build "10 days ago", then upkeep today
+faketime -f "-10d" python3 -m getsome build "Neon TV"
+FAKETIME_DONT_FAKE_MONOTONIC=1 faketime -f "@2026-11-19 03:10:00" python3 -m getsome tv --windowed --channel 7
+```
+Mock TMM libraries are easy to fake: copy a tiny `ffmpeg -f lavfi testsrc2` clip into `Show (Year)/Season N/Show - SxxEyy.mkv` with `<episodedetails>` NFOs, plus `tvshow.nfo` and `<movie>` NFOs.

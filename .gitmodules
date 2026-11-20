@@ -1,0 +1,3 @@
+[submodule "vendor/FieldStation42"]
+	path = vendor/FieldStation42
+	url = https://github.com/shane-mason/FieldStation42.git

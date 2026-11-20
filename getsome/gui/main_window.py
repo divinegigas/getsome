@@ -79,6 +79,11 @@ class MainWindow(QMainWindow):
         new = button("+ New channel", "primary")
         new.clicked.connect(self._new_channel)
         ll.addWidget(new)
+        auto = button("Auto-create channels…")
+        auto.setToolTip("Point it at your library, say how many channels, and it suggests channels of similar\n"
+                        "shows (and movie channels for films). You can edit everything before it creates them.")
+        auto.clicked.connect(self.auto_create)
+        ll.addWidget(auto)
         self.build_all_btn = button("Build all changed")
         self.build_all_btn.clicked.connect(self._build_changed)
         ll.addWidget(self.build_all_btn)
@@ -326,6 +331,24 @@ class MainWindow(QMainWindow):
                 self.list.setCurrentRow(i)
                 break
         self._select(self.list.currentRow())
+
+    def auto_create(self) -> None:
+        from .autopop_dialog import AutoPopulateDialog
+
+        dlg = AutoPopulateDialog(self.channels, self)
+        if dlg.exec() != QDialog.Accepted or not dlg.created:
+            return
+        self.channels += dlg.created
+        model.save(self.channels)
+        self._refresh_list()
+        self.list.setCurrentRow(self.channels.index(dlg.created[0]))
+        self._select(self.list.currentRow())
+        if dlg.build_now:
+            self._build(dlg.created)
+        else:
+            QMessageBox.information(self, "Channels created",
+                                    f"{len(dlg.created)} channels were added. They go on the air once they're "
+                                    "built: press “Build all changed” when you're ready.")
 
     def rebuild_all(self) -> None:
         chans = [c for c in self.channels if c.has_content]

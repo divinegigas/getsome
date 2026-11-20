@@ -53,6 +53,7 @@ getsome/channel_writer.py  Channel -> plan (tags) -> FS42 conf with hourly slots
 getsome/builder.py       build + sequence line-up with the clock
 getsome/upkeep.py        keep schedules ahead of the clock (extend / rebuild expired), shared lock
 getsome/cleanup.py       find/fix leftover, broken, empty, duplicate-number channels
+getsome/autopop.py       auto-create channels: group shows/films by genre, rating, decade; names, styles (GUI: gui/autopop_dialog.py)
 getsome/artwork.py       finds poster/fanart/logo/episode-thumb art next to shows and films
 getsome/steam.py         running under Steam (Big Picture): env fixes, X11 window, launch log
 getsome/ads.py           commercial pool: invented ads, IDs, show promos, own folder; per-channel links

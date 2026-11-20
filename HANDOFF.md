@@ -240,7 +240,22 @@ follows it). **Rebuild all channels…** button under the channel list and in Se
 (`MainWindow.rebuild_all`, asks first). Channels with commercial breaks now include `ads.ADS_VERSION`,
 `ads.POOL_VERSION` and the product-ads setting in their build hash, so updates/settings that change the
 commercials mark them "needs build" automatically (this update does that once for every commercial channel).
-**Next topic under discussion: auto-populate channels from a library** (see Next steps).
+- **Auto-create channels…** (button under "+ New channel"; `autopop.py` + `gui/autopop_dialog.py`). Owner's
+  choices: keep existing channels and use *every* show in the picked folders (even ones already on a
+  channel; mainly for new setups like a Bazzite PC), films only on separate movie channels, no automatic
+  PIN restriction, no time blocks. Page 1: tick/add TV and movie folders (added to the library settings,
+  scanned with `ScanDialog` if the cache is stale). Page 2: counts (suggested: ~8 shows per channel but at
+  least one per main genre with a few shows; films: one per main genre with enough films, max 8), first
+  channel number (after the highest existing), "Commercial breaks on the new TV channels" (off), and an
+  editable tree: double-click to rename/renumber, style combo per TV channel, untick titles, drag titles
+  between channels (a show dragged onto a movie channel turns it into a TV channel; films dragged onto a TV
+  channel become its films). Create, or Create & build. Clashing numbers/names are refused.
+  Grouping: weighted genre overlap (`_WEIGHT`: distinctive genres count more than "drama"), + decade
+  nudge, + rating strain; family vs mature never share a channel (so asking for too few channels can give
+  more); average-linkage merging with a size-balance term. Names from the strongest genre not yet used
+  (`TV_NAMES` / `MOVIE_NAMES`, invented, never real networks), "90s " / "2010s " prefix when ≥70% share a
+  decade; "Kid Zone" for kid-safe groups with kids/family genres. Episodic genres → Shuffle Classics, else
+  Series Marathon. `media_index.rating_tier` is now shared by the pickers and autopop.
 
 ## Decisions made (and why)
 - **Our own Qt front end over an unmodified FS42 submodule** (owner approved). FS42's player can't layer neon and static over video cleanly. FS42 can still be updated by bumping the submodule; only `getsome/fs42.py` should need changes.

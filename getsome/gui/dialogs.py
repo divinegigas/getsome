@@ -98,26 +98,7 @@ RATING_TIERS = {
     "mature": "Mature (R, TV-MA, NC-17)",
     "none": "No rating",
 }
-_FAMILY = {"G", "TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "U", "E", "APPROVED", "PASSED", "ALL", "L", "AL"}
-_PG = {"PG", "TV-PG", "M", "GP"}
-_TEEN = {"PG-13", "TV-14", "12A", "12", "15", "14A", "14", "M/12", "PG13"}
-_MATURE = {"R", "NC-17", "TV-MA", "X", "XXX", "18", "R18", "18A", "R-18", "MA15+", "R18+", "NC17"}
-
-
-def rating_tier(r: str) -> str:
-    u = (r or "").strip().upper()
-    if not u or u in ("NR", "NOT RATED", "UNRATED", "N/A", "TV-NR"):
-        return "none"
-    for tier, names in (("family", _FAMILY), ("pg", _PG), ("teen", _TEEN), ("mature", _MATURE)):
-        if u in names:
-            return tier
-    import re
-
-    m = re.search(r"\d+", u)                    # FSK 16, 6+, K-12 ...
-    if m:
-        age = int(m.group())
-        return "family" if age <= 6 else "pg" if age <= 11 else "teen" if age <= 16 else "mature"
-    return "none"
+from ..media_index import rating_tier  # noqa: E402  (shared with autopop)
 
 
 _badges: dict[tuple[str, str], object] = {}

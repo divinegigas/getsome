@@ -186,6 +186,7 @@ class OverlayState:
     pin_entry: str | None = None       # digits typed so far while the PIN pad is open
     pin_error: bool = False            # last PIN was wrong
     lock_note: str = ""                # e.g. "Opens by itself at 9 PM"
+    pin_pick: int | None = None        # digit being chosen with Up/Down (game controller)
 
     def animating(self) -> bool:
         return (self.guide or self.locked or self.bumper is not None or self.intermission is not None or self.static_shown > 0.001 or self.static_level > 0 or self.channel_fade.opacity() > 0
@@ -290,7 +291,7 @@ def paint_lock(p: QPainter, w: int, h: int, s: OverlayState) -> None:
         if s.lock_note:
             draw_neon(p, s.lock_note, "text", int(36 * unit), YELLOW, cx, cy + 330 * unit, "cm")
         return
-    n = max(4, len(s.pin_entry) + 1) if s.pin_entry else 4
+    n = max(4, len(s.pin_entry) + 1 + (s.pin_pick is not None))
     r, gap = 22 * unit, 70 * unit
     x0 = cx - gap * (n - 1) / 2
     p.save()
@@ -298,10 +299,22 @@ def paint_lock(p: QPainter, w: int, h: int, s: OverlayState) -> None:
         filled = i < len(s.pin_entry)
         p.setPen(QPen(CYAN, 5 * unit))
         p.setBrush(CYAN if filled else Qt.NoBrush)
-        p.drawEllipse(QPointF(x0 + i * gap, cy + 260 * unit), r, r)
+        c = QPointF(x0 + i * gap, cy + 260 * unit)
+        if i == len(s.pin_entry) and s.pin_pick is not None:
+            p.setPen(QPen(PINK, 5 * unit))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(c, r * 1.25, r * 1.25)
+            p.setFont(font("text", int(34 * unit)))
+            p.setPen(QColor("#ffffff"))
+            p.drawText(QRectF(c.x() - r, c.y() - r * 1.2, 2 * r, 2.4 * r), Qt.AlignCenter, str(s.pin_pick))
+            continue
+        p.drawEllipse(c, r, r)
     p.restore()
     msg = "Wrong PIN - try again" if s.pin_error else "Type the PIN, then OK  ·  BACK cancels"
     draw_neon(p, msg, "text", int(40 * unit), PINK if s.pin_error else CYAN, cx, cy + 350 * unit, "cm")
+    if not s.pin_error:
+        draw_neon(p, "Controller: Up/Down picks a digit, Right moves on", "text", int(32 * unit), YELLOW,
+                  cx, cy + 410 * unit, "cm")
 
 
 def _scanlines(p: QPainter, r: QRectF, opacity: float) -> None:

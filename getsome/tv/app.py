@@ -111,6 +111,11 @@ class TVWindow(QMainWindow):
         self.unlocked = False
         self.away_since: float | None = None   # when we last left a restricted channel while unlocked
         self.pin_timer = QTimer(self, singleShot=True, timeout=self._pin_timeout)
+        from .gamepad import Gamepads
+
+        self.gamepads = Gamepads()
+        self.pad_timer = QTimer(self, interval=16, timeout=self._poll_gamepads)
+        self.pad_timer.start()
         self.renderer.guide.hidden = self._locked_numbers
 
         self.seg_timer = QTimer(self, singleShot=True, timeout=self._segment_finished)
@@ -217,6 +222,7 @@ class TVWindow(QMainWindow):
         self.video.set_muted(True)
         self.hiss.start()
         self.state.pin_entry = None
+        self.state.pin_pick = None
         self.state.pin_error = False
         self._tick_relock()
         self._apply_lock()
@@ -794,38 +800,73 @@ class TVWindow(QMainWindow):
     def keyPressEvent(self, ev):
         key = ev.key()
         action = self.keys.action_for(key)
-        self._input_seen()
         if action is None and KeyMap.digit_for(key) is None:
             # helps set up IR remotes: the log names every button we don't use
             from PySide6.QtGui import QKeySequence
 
             _log.info("unassigned key: %r (code %s)", QKeySequence(key).toString(), key)
+        if self._duplicate(action, "key"):
+            return
+        if not self._handle(action, key):
+            super().keyPressEvent(ev)
+
+    # ------------------------------------------------------------------ game controllers
+    def _poll_gamepads(self) -> None:
+        try:
+            actions = self.gamepads.poll()
+        except Exception as e:          # a controller must never take TV mode down
+            _log.warning("game controller: %s", e)
+            return
+        if not actions or not self.isActiveWindow():
+            return                      # drained either way; only act while we're in front
+        for action in actions:
+            if not self._duplicate(action, "pad"):
+                self._handle(action, 0)
+
+    def _duplicate(self, action: str | None, source: str) -> bool:
+        """Steam Input can turn one controller press into a key press *and* a (virtual) controller
+        press: drop the same action arriving from the other source within a moment."""
+        now = time.monotonic()
+        last = getattr(self, "_last_action", None)
+        self._last_action = (action, source, now)
+        return bool(action and last and last[0] == action and last[1] != source and now - last[2] < 0.15)
+
+    def _handle(self, action: str | None, key: int) -> bool:
+        """One button press from a keyboard, remote (key) or controller (key 0). False = not ours."""
+        self._input_seen()
+        if action == "guide":
+            g = next((i for i, c in enumerate(self.channels) if c.network_type == GUIDE_TYPE), None)
+            if self.exit_menu.open or self.menu.open or self.music_menu.open or self.state.pin_entry is not None:
+                return True
+            if g is not None:
+                self.tune(self.prev_index if g == self.index and self.prev_index is not None else g)
+            return True
         if self.exit_menu.open:
             self._exit_menu_key(action)
             return
         if self.state.pin_entry is not None and self._pin_key(key, action):
-            return
+            return True
         if action in ("back", "quit"):
             self.menu.close()
             self.music_menu.close()
             self.exit_menu.show()
             self.video.update()
-            return
+            return True
         if self.menu.open:
             self._menu_key(key, action)
-            return
+            return True
         if self.music_menu.open:
             self._music_menu_key(action)
-            return
-        digit = KeyMap.digit_for(key)
+            return True
+        digit = KeyMap.digit_for(key) if key else None
         if digit is not None:
             self._digit(digit)
-            return
+            return True
         if action is None:
-            return super().keyPressEvent(ev)
+            return False
         if action == "menu":
             self._open_menu()
-            return
+            return True
         if action == "channel_up":
             self.tune(self.index + 1)
         elif action == "channel_down":
@@ -855,6 +896,7 @@ class TVWindow(QMainWindow):
             self.state.banner_fade.show(1.5)
         elif action == "fullscreen":
             self.showNormal() if self.isFullScreen() else self.showFullScreen()
+        return True
 
     # ------------------------------------------------------------------ restricted channels
     # strong enough to hide details and text, light enough to tell roughly what's on
@@ -932,6 +974,7 @@ class TVWindow(QMainWindow):
         self.video.update()
 
     def _open_pin(self) -> None:
+        self.state.pin_pick = None
         self.state.pin_entry = ""
         self.state.pin_error = False
         self.pin_timer.start(30_000)
@@ -943,18 +986,35 @@ class TVWindow(QMainWindow):
 
     def _pin_key(self, key: int, action: str | None) -> bool:
         """Keys while the PIN pad is open. Returns False to let the key act normally."""
-        digit = KeyMap.digit_for(key)
+        digit = KeyMap.digit_for(key) if key else None
         self.pin_timer.start(30_000)
+        pick = self.state.pin_pick
         if digit is not None:
             self.state.pin_error = False
+            self.state.pin_pick = None
             if len(self.state.pin_entry or "") < 12:
                 self.state.pin_entry = (self.state.pin_entry or "") + digit
+        elif action in ("channel_up", "channel_down"):
+            # no number buttons (game controller): Up/Down picks a digit, Right moves on, OK confirms
+            self.state.pin_error = False
+            step = 1 if action == "channel_up" else -1
+            self.state.pin_pick = (0 if step == 1 else 9) if pick is None else (pick + step) % 10
+        elif action == "right":
+            if pick is not None and len(self.state.pin_entry or "") < 12:
+                self.state.pin_entry = (self.state.pin_entry or "") + str(pick)
+            self.state.pin_pick = None
         elif action in ("back", "quit", "left"):
-            if action == "left" and self.state.pin_entry:
+            if action == "left" and pick is not None:
+                self.state.pin_pick = None
+            elif action == "left" and self.state.pin_entry:
                 self.state.pin_entry = self.state.pin_entry[:-1]
             else:
                 self.state.pin_entry = None
+                self.state.pin_pick = None
         elif action == "enter":
+            if pick is not None:
+                self.state.pin_entry = (self.state.pin_entry or "") + str(pick)
+                self.state.pin_pick = None
             if self.state.pin_entry == str(self.settings.get("restricted_pin") or "69"):
                 _log.info("restricted channels unlocked for this session")
                 self.unlocked = True
@@ -968,7 +1028,8 @@ class TVWindow(QMainWindow):
                 self.state.pin_entry = ""
                 self.state.pin_error = True
         else:
-            self.state.pin_entry = None      # e.g. channel up/down: close the pad and carry on
+            self.state.pin_entry = None      # e.g. info or menu: close the pad and carry on
+            self.state.pin_pick = None
             self.video.update()
             return False
         self.video.update()
@@ -1050,6 +1111,8 @@ class TVWindow(QMainWindow):
         self.preview_timer.stop()
         self.awake.stop()
         self.awake_timer.stop()
+        self.pad_timer.stop()
+        self.gamepads.close()
         self._save_state()
         self.anim_timer.stop()
         self.watchdog.stop()

@@ -266,6 +266,19 @@ fixes stay), X11 in Game Mode (gamescope) or when Settings → Shortcuts → "Wh
 the picture with the Wayland window; if not, the X11 fallback costs the OK key (a future fix would be
 reading the remote via evdev, which needs input-device permissions).
 
+**Game controllers in TV mode (20 Nov)** (`tv/gamepad.py`): reads `/dev/input/js*` (joydev; readable by
+the logged-in user via uaccess, no packages), non-blocking, polled every 16 ms, rescans every 2 s for
+hot-plug. Buttons/axes are identified by evdev code via JSIOCGBTNMAP/JSIOCGAXMAP (falls back to xpad order),
+so layouts match across Xbox/PlayStation/8BitDo. Map (`BUTTONS`): A/south OK · B/east Back · X/west Info ·
+Y/north previous channel · Start Menu · Back/View/Select "guide" (new action: jump to the guide channel,
+again = back) · LB/RB channel down/up · d-pad/left stick channel up/down/left/right with key-like repeat
+(0.45 s, then every 0.16 s) · LT/RT volume (only axes resting at -1, so a cheap pad's right stick on Z/RZ is
+ignored). Only acts while the TV window is active. `TVWindow._handle(action, key)` is now the single input
+path for keys and controllers; `_duplicate` drops the same action from key+pad within 0.15 s (Steam Input
+keyboard templates) and `Gamepads._emit` the same action from two pads within 0.12 s (Steam's virtual pad).
+PIN pad with a controller: Up/Down picks a digit (shown in a pink circle), Right moves on, Left deletes,
+OK confirms (the pending digit counts). Not remappable yet (keymap.json is keyboard only).
+
 **Steam library artwork** (owner asked for it to "just appear", like RetroDECK / Steam ROM Manager):
 - Settings → Shortcuts → **Add to Steam** (`steam_shortcut.add_to_steam`): for every Steam account
   (`userdata/<id>`, not 0; roots `~/.steam/steam`, `~/.local/share/Steam`, Flatpak `~/.var/app/com.valvesoftware.Steam/…`)

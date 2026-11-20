@@ -65,7 +65,7 @@ getsome/assets_gen.py    runtime media, up-next clips, guide-music composer proc
 getsome/synth.py, music.py   synthesizer + composer (10 original guide tracks)
 getsome/beds.py          short original beds: jrpg, metal, rock, punk, reggae, ska (cards, ads, intermissions)
 getsome/gui/             setup window (theme, main_window, channel_editor, schedule_editor, dialogs, workers)
-getsome/tv/              TV mode (app, mpv_widget, overlays, bumpers, intermissions, ads_paint, art_paint, guide, menu, awake, hiss, keys)
+getsome/tv/              TV mode (app, mpv_widget, overlays, bumpers, intermissions, ads_paint, art_paint, guide, menu, awake, hiss, keys, gamepad)
 ```
 
 ## Owner's setup

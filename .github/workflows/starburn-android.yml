@@ -1,6 +1,6 @@
-# Builds the Starburn Android app (APK) whenever the game changes on its branch,
-# and puts it on the repository's Releases page as "Starburn (latest build)".
-name: Starburn Android app
+# Builds the Void Survivors Android app (APK) whenever the game changes on its branch,
+# and puts it on the repository's Releases page as "Void Survivors (latest build)".
+name: Void Survivors Android app
 
 on:
   push:
@@ -48,20 +48,20 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Name the APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk starburn.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk void-survivors.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: starburn-apk
-          path: shooter/starburn.apk
+          name: void-survivors-apk
+          path: shooter/void-survivors.apk
 
-      - name: Publish to Releases as "Starburn (latest build)"
+      - name: Publish to Releases as "Void Survivors (latest build)"
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete starburn-latest --yes --cleanup-tag || true
-          gh release create starburn-latest starburn.apk \
+          gh release create starburn-latest void-survivors.apk \
             --prerelease \
             --target "${{ github.sha }}" \
-            --title "Starburn (latest build #${{ github.run_number }})" \
-            --notes "Tap **starburn.apk** below to download, then open it to install. Builds install over the previous one and keep your progress."
+            --title "Void Survivors (latest build #${{ github.run_number }})" \
+            --notes "Tap **void-survivors.apk** below to download, then open it to install. Builds install over the previous one and keep your progress."

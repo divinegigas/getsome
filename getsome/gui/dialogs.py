@@ -756,6 +756,16 @@ class SettingsDialog(QDialog):
         self.desk_btn.clicked.connect(self._toggle_desktop)
         row.addWidget(self.desk_btn)
         lay.addLayout(row)
+        row = QHBoxLayout()
+        steam_label = QLabel("Steam: adds Neon Cable 42 to your Steam library with its own artwork, starting "
+                             "straight in TV mode (great for Big Picture). Close Steam first.")
+        steam_label.setObjectName("dim")
+        steam_label.setWordWrap(True)
+        row.addWidget(steam_label, 1)
+        steam_btn = button("Add to Steam")
+        steam_btn.clicked.connect(self._add_to_steam)
+        row.addWidget(steam_btn)
+        lay.addLayout(row)
         self._menu_ui()
 
         lay.addWidget(h2("TV library folders"))
@@ -1014,6 +1024,25 @@ class SettingsDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "Desktop shortcut", f"Couldn't make the shortcut: {e}")
         self._menu_ui()
+
+    def _add_to_steam(self) -> None:
+        from PySide6.QtGui import QGuiApplication
+
+        from .. import steam_shortcut
+
+        QGuiApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            msg = steam_shortcut.add_to_steam()
+        except steam_shortcut.SteamError as e:
+            QGuiApplication.restoreOverrideCursor()
+            QMessageBox.information(self, "Add to Steam", str(e))
+            return
+        except Exception as e:      # unexpected: say so plainly, nothing half-written (atomic replace)
+            QGuiApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Add to Steam", f"Couldn't add it to Steam: {e}")
+            return
+        QGuiApplication.restoreOverrideCursor()
+        QMessageBox.information(self, "Add to Steam", msg)
 
     # ---------------------------------------------------------------- updates
     def _check_updates(self) -> None:

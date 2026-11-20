@@ -453,4 +453,22 @@ def run_setup() -> int:
     app.setStyleSheet(theme.STYLE)
     win = MainWindow()
     win.show()
+    _steam_art_later()
     return app.exec()
+
+
+def _steam_art_later() -> None:
+    """If Neon Cable 42 was added to Steam by hand, give its shortcut our artwork (once)."""
+    from PySide6.QtCore import QTimer
+
+    def go():
+        try:
+            from .. import steam_shortcut
+
+            steam_shortcut.ensure_artwork()
+        except Exception as e:      # never get in the way of starting up
+            import logging
+
+            logging.getLogger("getsome.steam_shortcut").warning("Steam artwork check failed: %s", e)
+
+    QTimer.singleShot(3000, go)

@@ -257,6 +257,23 @@ commercials mark them "needs build" automatically (this update does that once fo
   decade; "Kid Zone" for kid-safe groups with kids/family genres. Episodic genres → Shuffle Classics, else
   Series Marathon. `media_index.rating_tier` is now shared by the pickers and autopop.
 
+**Steam library artwork** (owner asked for it to "just appear", like RetroDECK / Steam ROM Manager):
+- Settings → Shortcuts → **Add to Steam** (`steam_shortcut.add_to_steam`): for every Steam account
+  (`userdata/<id>`, not 0; roots `~/.steam/steam`, `~/.local/share/Steam`, Flatpak `~/.var/app/com.valvesoftware.Steam/…`)
+  adds a shortcut to `config/shortcuts.vdf` (own binary-VDF reader/writer, round-trips Steam's bytes exactly;
+  backup `shortcuts.vdf.before-neon-cable-42`; atomic replace): AppName "Neon Cable 42", Exe/StartDir quoted
+  `getsome.sh`, LaunchOptions `tv`, appid = crc32(exe+name)|0x80000000, icon = our `_icon.png`. Refuses
+  while Steam runs (`/proc/*/comm` steam/steamwebhelper; Steam rewrites shortcuts.vdf on exit). An existing
+  shortcut of ours (Exe contains `getsome.sh` or the name matches) is never duplicated; only missing art added.
+- **Startup safety net** (`ensure_artwork`, 3 s after the setup window or TV mode opens): any Steam
+  shortcut of ours without artwork gets the missing images (only files in `config/grid/`, safe while Steam
+  runs, shown after a Steam restart). Never overwrites images the owner set (any of png/jpg/jpeg/webp).
+- Art (`steam_art.render`, drawn in code): `<appid>p.png` 600x900 cover, `<appid>.png` 920x430, `_hero`
+  1920x620 (no text; Steam overlays the logo), `_logo` transparent, `_icon` (the app's TV icon).
+- Limit: Steam never asks an app for art when the owner adds it by hand; the safety net covers that
+  case after one launch. A hand-added shortcut keeps its own launch options and icon (we don't edit
+  shortcuts.vdf while Steam may be running). `GETSOME_STEAM_ROOT` points the module at a test folder.
+
 ## Decisions made (and why)
 - **Our own Qt front end over an unmodified FS42 submodule** (owner approved). FS42's player can't layer neon and static over video cleanly. FS42 can still be updated by bumping the submodule; only `getsome/fs42.py` should need changes.
 - **Symlink folders per show**, named `Show Title - S01E02.ext`, built from the NFO season and episode numbers. FS42 sorts sequences by path (which would put Season 10 before Season 2) and takes titles from file names. Specials (season 0), extras and trailers are skipped. Folders without NFOs play in natural name order, and the HUD shows the cleaned file name.

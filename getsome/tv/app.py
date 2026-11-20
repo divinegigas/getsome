@@ -1082,7 +1082,9 @@ def run_tv(windowed: bool = False, start_channel: int | None = None) -> int:
     else:
         win.showFullScreen()
     from .. import steam
+    from ..gui.main_window import _steam_art_later
 
+    _steam_art_later()
     if steam.from_steam():
         # Big Picture stays in front unless we come forward ourselves (see steam.py)
         def _front():

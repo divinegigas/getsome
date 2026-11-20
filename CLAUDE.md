@@ -56,6 +56,7 @@ getsome/cleanup.py       find/fix leftover, broken, empty, duplicate-number chan
 getsome/autopop.py       auto-create channels: group shows/films by genre, rating, decade; names, styles (GUI: gui/autopop_dialog.py)
 getsome/artwork.py       finds poster/fanart/logo/episode-thumb art next to shows and films
 getsome/steam.py         running under Steam (Big Picture): env fixes, X11 window, launch log
+getsome/steam_shortcut.py  "Add to Steam" (shortcuts.vdf, binary VDF) + startup artwork safety net; art in steam_art.py
 getsome/ads.py           commercial pool: invented ads, IDs, show promos, own folder; per-channel links
 getsome/updater.py       Settings > Check for updates (git pull + restart)
 getsome/media_index.py   TV/movie NFO parsing, scans, link folders

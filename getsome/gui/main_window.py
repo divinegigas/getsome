@@ -239,6 +239,11 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _guide_text() -> str:
+        from .. import cablebox
+
+        conf = cablebox.config()
+        if conf:
+            return f"Cable box: Watch TV shows {conf.get('name')}'s channels (Settings → Home network)."
         g = model.guide_number()
         return f"Channel {g} is the built-in TV guide." if g else "TV guide is off (see Settings)."
 

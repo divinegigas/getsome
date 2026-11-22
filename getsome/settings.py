@@ -44,6 +44,8 @@ DEFAULTS: dict[str, Any] = {
     # Window type when Steam starts Neon Cable 42 on a Wayland desktop: "wayland" (every remote button
     # works) or "x11" (fallback if Big Picture shows sound but no picture; the remote's OK key is lost)
     "steam_window": "wayland",
+    # Cable box: the head-end this computer watches ({host, port, token, name}; {} = not a cable box)
+    "cable_box": {},
     # PIN that unlocks restricted channels in TV mode (digits only)
     "restricted_pin": "69",
     # After the PIN: lock restricted channels again after this many minutes in a row spent

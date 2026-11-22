@@ -90,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("add-to-menu", help="add Neon Cable 42 to the desktop app menu (Sound & Video)")
     sub.add_parser("remove-from-menu", help="remove Neon Cable 42 from the desktop app menu")
     sub.add_parser("upkeep", help="extend schedules running short and rebuild any that ended")
+    sv = sub.add_parser("serve", help="share this computer's channels with cable boxes on the home network")
+    sv.add_argument("--port", type=int, default=4242)
 
     args = p.parse_args(argv)
     _setup_logging(args.verbose)
@@ -221,6 +223,12 @@ def main(argv: list[str] | None = None) -> int:
         else:
             desktop.remove()
             print("Removed from the app menu.")
+        return 0
+
+    if cmd == "serve":
+        from . import headend
+
+        headend.serve(args.port)
         return 0
 
     if cmd == "upkeep":

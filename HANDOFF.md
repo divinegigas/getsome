@@ -266,6 +266,30 @@ fixes stay), X11 in Game Mode (gamescope) or when Settings → Shortcuts → "Wh
 the picture with the Wayland window; if not, the X11 fallback costs the OK key (a future fix would be
 reading the remote via evdev, which needs input-device permissions).
 
+**Home network: head-end + cable box (22 Nov)** (owner: watch on the Bazzite PC without a second library).
+- `headend.py` (`getsome serve`, started by Settings → Home network → "Share my channels…", which also writes
+  `~/.config/autostart/neon-cable-42-headend.desktop`; pid in data dir): ThreadingHTTPServer on 4242 + UDP
+  4243 discovery (box broadcasts `NC42?`). Pairing: Settings shows a 6-digit code (`pair_code.json`, 10 min,
+  closed when the dialog closes) → token in `config/cable_boxes.json`. `/api/call` whitelist (info,
+  segment_at, programme_at, programmes, now_and_next, card_for, promo_for, on_this_day, episode_details,
+  artwork) serialised with a lock; programmes carry their `episode()` result (NFOs are on the head-end).
+  `/f/<token>/<quoted path>` serves files with Range, only under realpath'd roots (data dir, library/movie
+  folders, channels' show/film/ad/infomercial folders). The server runs hourly upkeep and keeps the PC awake
+  while a box streamed in the last 2 min. Fedora Workstation's firewall zone already allows 1025-65535.
+- `cablebox.py`: `settings.cable_box` {host, port, token, name}. `install()` (run_tv) monkeypatches fs42.channels/
+  segment_at/programme_at/programmes/now_and_next, ads.card_for/promo_for/on_this_day/episode_details,
+  artwork.for_programme and model.load (restricted list); TV mode takes guide channel / PIN / relock from the
+  head-end (`shared_settings`) and skips its schedule keeper. `media(path)` → URL for mpv (load and
+  load_preview; locally generated runtime files stay local), `fetch(path)` → cached artwork for `_image`.
+  Unreachable head-end → NoSignal ("can't reach the head-end"); no channels → "NO SIGNAL" message.
+- Settings → Home network (`gui/network_dialogs.py`): share toggle, status, "Pair a cable box…", "Forget cable
+  boxes", "Connect to a head-end…" (discovery list, address, code), "Stop being a cable box". The setup
+  window's note says when it's a cable box.
+- Tested in the sandbox with two data dirs on one machine (discovery, pairing, wrong code/token/path refused,
+  Range, TV tuning/playing over HTTP, restricted lock, guide). **Untested: real two-PC LAN, Bazzite.** The box
+  still needs libmpv + ffmpeg (it generates its own bars/music); if Bazzite lacks them, the AppImage (phase 2)
+  solves it, or `rpm-ostree install mpv-libs`. In Steam Game Mode the box gets an X11 window (remote OK lost there).
+
 **Remove all channels (22 Nov)**: Settings → Maintenance → "Remove all channels…" (danger button; closes
 Settings, then `MainWindow.remove_all`). Refuses while TV mode runs; confirmation box with Cancel as default
 and a "Remove all channels" button. `cleanup.remove_all` removes every channel via `builder.remove_channel`

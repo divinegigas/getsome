@@ -949,6 +949,10 @@ class SettingsDialog(QDialog):
 
         from .. import updater
 
+        from .network_dialogs import add_network_section
+
+        add_network_section(self, lay)
+
         lay.addWidget(h2("Updates"))
         row = QHBoxLayout()
         self.update_label = QLabel(f"Version {updater.version()}" if updater.available()

@@ -27,6 +27,12 @@ def _image(path: str, max_side: int = 1920) -> QImage | None:
     a wall of posters would otherwise take hundreds of MB), in a small LRU cache."""
     if not path:
         return None
+    from .. import cablebox
+
+    if cablebox.active():
+        path = cablebox.fetch(path)           # artwork lives on the head-end
+        if not path:
+            return None
     key = (path, max_side)
     if key in _img_cache:
         _img_cache.move_to_end(key)

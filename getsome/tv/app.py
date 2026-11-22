@@ -57,6 +57,11 @@ class TVWindow(QMainWindow):
         self.state = OverlayState()
         self.renderer = OverlayRenderer(self.state)
         self.settings = settings.load()
+        from .. import cablebox
+
+        self.cable_box = cablebox.active()
+        if self.cable_box:          # the head-end decides the guide channel, the PIN and relock time
+            self.settings.update(cablebox.shared_settings())
         self.video = MpvWidget(self, overlay_painter=self.renderer.paint,
                                hwdec=str(self.settings["hwdec"]), volume=float(self.settings["volume"]))
         self.setCentralWidget(self.video)
@@ -135,8 +140,12 @@ class TVWindow(QMainWindow):
 
         if not self.channels:
             self.state.black = True
-            self.state.message = "NO CHANNELS"
-            self.state.message_sub = 'Run "getsome demo" or "getsome add-channel" first'
+            if self.cable_box:
+                self.state.message = "NO SIGNAL"
+                self.state.message_sub = "Can't reach the head-end. Is the other computer on and sharing?"
+            else:
+                self.state.message = "NO CHANNELS"
+                self.state.message_sub = "Open setup and make a channel first"
             return
 
         if start_channel is not None:
@@ -1090,6 +1099,11 @@ class TVWindow(QMainWindow):
 
     # ------------------------------------------------------------------ upkeep
     def _start_schedule_keeper(self):
+        if self.cable_box:
+            return                  # the head-end keeps the schedules
+        self._start_schedule_keeper_local()
+
+    def _start_schedule_keeper_local(self):
         """Keep schedules days ahead, in the background: extend ones running short and
         rebuild any that ran out while TV mode wasn't running (see upkeep.py)."""
         from .. import upkeep
@@ -1125,6 +1139,9 @@ class TVWindow(QMainWindow):
 
 def run_tv(windowed: bool = False, start_channel: int | None = None) -> int:
     app = QApplication.instance() or QApplication([])
+    from .. import cablebox
+
+    cablebox.install()              # a cable box asks the head-end instead of its own channels
     assets_gen.start_music_background()
     app.setApplicationName(paths.APP_NAME)
     app.setDesktopFileName("getsome")       # groups windows under the app-menu icon (Wayland app id)

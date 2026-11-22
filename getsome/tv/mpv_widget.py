@@ -54,6 +54,7 @@ class MpvWidget(QOpenGLWidget):
             volume=volume,
             image_display_duration="inf",
             audio_client_name="Neon Cable 42",
+            network_timeout=10,
             loglevel="warn",
         )
         self._ctx: mpv.MpvRenderContext | None = None
@@ -123,6 +124,9 @@ class MpvWidget(QOpenGLWidget):
         return self.preview
 
     def load_preview(self, path: str, start: float | None = None, end: float | None = None) -> None:
+        from .. import cablebox
+
+        path = cablebox.media(path)
         pl = self.enable_preview()
         opts = [f"start={start:.3f}" if start and start > 0 else "start=none",
                 f"end={end:.3f}" if end and end > 0 else "end=none", "loop-file=no"]
@@ -180,6 +184,9 @@ class MpvWidget(QOpenGLWidget):
     def load(self, path: str, start: float | None = None, end: float | None = None, loop: bool = False):
         """Load a file with per-file options (never global ones, which would also
         retarget whatever is currently playing)."""
+        from .. import cablebox
+
+        path = cablebox.media(path)       # a cable box streams from the head-end
         opts = [
             f"start={start:.3f}" if start and start > 0 else "start=none",
             f"end={end:.3f}" if end and end > 0 else "end=none",

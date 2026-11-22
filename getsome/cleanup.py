@@ -152,3 +152,42 @@ def remove_leftovers_on(number: int, channels: list[model.Channel], log=_log.inf
     for _f, conf in leftover_confs(channels):
         if int(conf.get("channel_number", -1)) == int(number):
             _drop_conf(conf.get("network_name", _f.stem), log)
+
+
+def remove_all(channels: list[model.Channel], progress=None, log=_log.info) -> int:
+    """Fresh start: delete every channel (schedule, FS42 config, link folders, commercial pool).
+    The owner's media, settings, library scans and generated runtime media are kept.
+    progress(i, n, name) is called before each channel. Returns how many channels were removed."""
+    from . import builder
+
+    todo = list(channels)
+    leftovers = leftover_confs(channels)
+    n = len(todo) + len(leftovers)
+    done = 0
+    for i, ch in enumerate(todo):
+        if progress:
+            progress(i, n, ch.name)
+        builder.remove_channel(ch, channels, log)
+        log(f"removed channel {ch.number} “{ch.name}”")
+        done += 1
+    for k, (f, conf) in enumerate(leftovers):
+        if progress:
+            progress(len(todo) + k, n, conf.get("network_name", f.stem))
+        _drop_conf(conf.get("network_name", f.stem), log)
+    # per-channel commercial pools (symlinks + json only) and empty catalog folders
+    for sub in ("ads", "catalog"):
+        root = paths.fs42_work_dir() / sub
+        if not root.is_dir():
+            continue
+        for d in root.iterdir():
+            if not d.is_dir() or d.is_symlink():
+                continue
+            for f in d.iterdir():
+                if f.is_symlink() or (sub == "ads" and f.suffix == ".json"):
+                    f.unlink()
+            try:
+                d.rmdir()
+            except OSError:
+                pass
+    model.save(channels)
+    return done

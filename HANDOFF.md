@@ -266,6 +266,13 @@ fixes stay), X11 in Game Mode (gamescope) or when Settings → Shortcuts → "Wh
 the picture with the Wayland window; if not, the X11 fallback costs the OK key (a future fix would be
 reading the remote via evdev, which needs input-device permissions).
 
+**Remove all channels (22 Nov)**: Settings → Maintenance → "Remove all channels…" (danger button; closes
+Settings, then `MainWindow.remove_all`). Refuses while TV mode runs; confirmation box with Cancel as default
+and a "Remove all channels" button. `cleanup.remove_all` removes every channel via `builder.remove_channel`
+(FS42 `-x` + conf + link folders), then leftover Neon Cable 42 confs, then the per-channel commercial pools
+(`fs42/ads/<slug>`, symlinks + json) and empty catalog folders, with a progress dialog. Media, settings,
+library caches and runtime media are kept.
+
 **Game controllers in TV mode (20 Nov)** (`tv/gamepad.py`): reads `/dev/input/js*` (joydev; readable by
 the logged-in user via uaccess, no packages), non-blocking, polled every 16 ms, rescans every 2 s for
 hot-plug. Buttons/axes are identified by evdev code via JSIOCGBTNMAP/JSIOCGAXMAP (falls back to xpad order),

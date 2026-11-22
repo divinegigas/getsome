@@ -977,6 +977,12 @@ class SettingsDialog(QDialog):
             rb.clicked.connect(lambda: (self._save_settings(), parent.rebuild_all()))
             row.addWidget(rb)
             lay.addLayout(row)
+            row = QHBoxLayout()
+            row.addWidget(QLabel("Start fresh: delete every channel (your media and settings are kept)"), 1)
+            ra = button("Remove all channels…", "danger")
+            ra.clicked.connect(lambda: (self._save_settings(), self.accept(), parent.remove_all()))
+            row.addWidget(ra)
+            lay.addLayout(row)
 
         lay.addStretch(1)
         row = QHBoxLayout()

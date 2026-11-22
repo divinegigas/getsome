@@ -350,6 +350,49 @@ class MainWindow(QMainWindow):
                                     f"{len(dlg.created)} channels were added. They go on the air once they're "
                                     "built: press “Build all changed” when you're ready.")
 
+    def remove_all(self) -> None:
+        from PySide6.QtWidgets import QProgressDialog
+
+        from .. import cleanup
+
+        if not self.channels:
+            QMessageBox.information(self, "Remove all channels", "There are no channels to remove.")
+            return
+        if self.tv_proc and self.tv_proc.poll() is None:
+            QMessageBox.information(self, "Remove all channels", "Close TV mode first, then try again.")
+            return
+        box = QMessageBox(QMessageBox.Warning, "Remove all channels",
+                          f"Remove all {len(self.channels)} channels and start fresh?", parent=self)
+        box.setInformativeText("Every channel, its schedule and its time blocks are deleted, and this can't be "
+                               "undone. Your shows, movies, settings and PIN are not touched. You can make new "
+                               "channels afterwards, for example with “Auto-create channels…”.")
+        yes = box.addButton("Remove all channels", QMessageBox.DestructiveRole)
+        no = box.addButton("Cancel", QMessageBox.RejectRole)
+        box.setDefaultButton(no)
+        box.exec()
+        if box.clickedButton() is not yes:
+            return
+        dlg = QProgressDialog("Removing channels…", None, 0, len(self.channels), self)
+        dlg.setWindowTitle("Remove all channels")
+        dlg.setMinimumDuration(0)
+        dlg.setWindowModality(Qt.WindowModal)
+
+        def step(i, n, name):
+            dlg.setMaximum(n)
+            dlg.setValue(i)
+            dlg.setLabelText(f"Removing {name}…")
+            QApplication.processEvents()
+
+        try:
+            n = cleanup.remove_all(self.channels, step)
+        finally:
+            dlg.close()
+        self.channels = model.load()
+        self._refresh_list()
+        self._select(-1)
+        QMessageBox.information(self, "Remove all channels",
+                                f"Removed {n} channel{'s' if n != 1 else ''}. You're starting fresh.")
+
     def rebuild_all(self) -> None:
         chans = [c for c in self.channels if c.has_content]
         if not chans:

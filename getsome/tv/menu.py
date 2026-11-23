@@ -25,6 +25,10 @@ LANGS = {
     "ara": "Arabic", "heb": "Hebrew", "hin": "Hindi", "tha": "Thai", "vie": "Vietnamese", "und": "Unknown",
 }
 AUTO_CLOSE_S = 12.0
+# Picture (zoom) modes, as on a TV remote's "aspect" button. Applied by TVWindow._apply_zoom.
+ZOOMS = [("normal", "Normal"), ("zoom", "Zoom (fill, no bars)"), ("cinema", "Cinema zoom (wide films)"),
+         ("stretch", "Stretch to fill"), ("4:3", "Force 4:3"), ("16:9", "Force 16:9")]
+ZOOM_KEYS = [k for k, _ in ZOOMS]
 
 
 def lang_name(code: str | None) -> str:
@@ -49,7 +53,7 @@ def track_label(t: dict) -> str:
 
 
 class TrackMenu:
-    ROWS = ("audio", "subs", "close")
+    ROWS = ("audio", "subs", "picture", "close")
 
     def __init__(self):
         self.open = False
@@ -58,10 +62,12 @@ class TrackMenu:
         self.subs: list[dict] = []
         self.audio_i = 0
         self.sub_i = 0            # 0 = off, 1.. = subs[i-1]
+        self.zoom_i = 0           # index into ZOOMS
         self._touched = 0.0
 
     # ---------------------------------------------------------------- state
-    def show(self, tracks: list[dict]) -> None:
+    def show(self, tracks: list[dict], zoom: str = "normal") -> None:
+        self.zoom_i = ZOOM_KEYS.index(zoom) if zoom in ZOOM_KEYS else 0
         self.audio = [t for t in tracks if t.get("type") == "audio"]
         self.subs = [t for t in tracks if t.get("type") == "sub"]
         self.audio_i = next((i for i, t in enumerate(self.audio) if t.get("selected")), 0)
@@ -90,6 +96,9 @@ class TrackMenu:
         if r == "subs":
             self.sub_i = (self.sub_i + d) % (len(self.subs) + 1)
             return "subs", (self.subs[self.sub_i - 1] if self.sub_i else None)
+        if r == "picture":
+            self.zoom_i = (self.zoom_i + d) % len(ZOOMS)
+            return "picture", ZOOMS[self.zoom_i][0]
         return None
 
     # ---------------------------------------------------------------- paint
@@ -97,7 +106,7 @@ class TrackMenu:
         if not self.open:
             return
         unit = h / 1080.0
-        pw, ph = 960 * unit, 460 * unit
+        pw, ph = 960 * unit, 546 * unit
         x0, y0 = (w - pw) / 2, (h - ph) / 2
         p.save()
         p.fillRect(QRectF(0, 0, w, h), QColor(0, 0, 0, 120))
@@ -122,6 +131,7 @@ class TrackMenu:
              len(self.audio) > 1),
             ("SUBTITLES", "Off" if not self.sub_i else track_label(self.subs[self.sub_i - 1]),
              bool(self.subs)),
+            ("PICTURE", ZOOMS[self.zoom_i][1], True),
             ("CLOSE", "", True),
         ]
         y = y0 + 130 * unit

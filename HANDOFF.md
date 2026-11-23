@@ -294,6 +294,15 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**Picture / zoom in the TV menu (23 Nov, owner request)**: MENU has a PICTURE row (`menu.ZOOMS`): Normal,
+Zoom (mpv `panscan=1`: a 16:9 picture boxed inside a 4:3 frame fills the screen), Cinema zoom (panscan 1 +
+`video-zoom=log2(2.35/1.78)`), Stretch (`keepaspect=no`), Force 4:3 / 16:9 (`video-aspect-override`).
+Remembered per show/film in `settings.zoom_by_show` (key from the file name: show title before " - SxxEyy",
+else the film's file name; same on every channel; Normal removes the entry). `TVWindow._apply_zoom` runs on
+every playback restart: features get their show's mode, commercials/cards/bumpers/images play Normal.
+Measured in the sandbox on a windowboxed clip: Normal 160-1119×90-629, Zoom/Cinema full screen, Stretch and
+16:9 full width with the clip's own bars, 4:3 = Normal.
+
 **Film cards before features (23 Nov, owner request)**: the countdown screen only shows for the last 3
 minutes (`tv/app.CARDS_BEFORE` = 180). In a longer gap before a film, `TVWindow._intermission` starts a
 thread (`_film_cards`) that collects up to six films coming up on the channel in the next 36 h (next

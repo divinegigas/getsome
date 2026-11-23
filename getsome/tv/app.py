@@ -18,6 +18,7 @@ from pathlib import Path
 import json
 import logging
 import os
+import re
 import random
 import sys
 import threading
@@ -620,6 +621,46 @@ class TVWindow(QMainWindow):
         self.tuning = False
         self._load_now(self.token)
 
+    # ------------------------------------------------------------------ picture / zoom
+    def _zoom_key(self) -> str:
+        """The show (or film) on screen, as the zoom memory knows it: the same on every channel."""
+        seg = self.seg
+        if seg is None or seg.content_type != "feature" or seg.media_type == "image":
+            return ""
+        name = re.sub(r"^\d{5} ", "", os.path.splitext(os.path.basename(seg.path))[0])
+        m = re.match(r"^(.*) - S\d+E\d+", name, re.I)
+        return (m.group(1) if m else name).strip()
+
+    def _zoom_mode(self) -> str:
+        key = self._zoom_key()
+        return (self.settings.get("zoom_by_show") or {}).get(key, "normal") if key else "normal"
+
+    def _set_zoom(self, mode: str) -> None:
+        import math
+
+        p = self.video.player
+        values = {"panscan": 0.0, "video-zoom": 0.0, "keepaspect": True, "video-aspect-override": "no"}
+        if mode == "zoom":
+            values["panscan"] = 1.0
+        elif mode == "cinema":                       # fill, then zoom a 2.35:1 picture past its bars
+            values.update({"panscan": 1.0, "video-zoom": math.log2(2.35 / (16 / 9))})
+        elif mode == "stretch":
+            values["keepaspect"] = False
+        elif mode in ("4:3", "16:9"):
+            values["video-aspect-override"] = mode
+        for k, v in values.items():
+            try:
+                p[k] = v
+            except Exception as e:
+                _log.debug("zoom %s=%s: %s", k, v, e)
+        self._zoom_now = mode
+
+    def _apply_zoom(self) -> None:
+        """Each new file: the show's remembered picture mode; commercials, cards and bumpers play normally."""
+        mode = self._zoom_mode()
+        if mode != getattr(self, "_zoom_now", "normal"):
+            self._set_zoom(mode)
+
     def _apply_track_prefs(self) -> None:
         """Pick audio/subtitle tracks matching the preferred languages, once per loaded file."""
         seg = self.seg
@@ -721,7 +762,7 @@ class TVWindow(QMainWindow):
             tracks = list(self.video.player.track_list or [])
         except Exception:
             tracks = []
-        self.menu.show(tracks)
+        self.menu.show(tracks, self._zoom_mode())
         self.state.banner_fade.hide()
         self.video.update()
 
@@ -731,6 +772,20 @@ class TVWindow(QMainWindow):
             return
         kind, t = res
         p = self.video.player
+        if kind == "picture":            # remembered for this show / film, on every channel
+            key = self._zoom_key()
+            if key:
+                s = settings.load()
+                zooms = dict(s.get("zoom_by_show") or {})
+                if t == "normal":
+                    zooms.pop(key, None)
+                else:
+                    zooms[key] = t
+                s["zoom_by_show"] = self.settings["zoom_by_show"] = zooms
+                settings.save(s)
+            self._set_zoom(t)
+            self.video.update()
+            return
         if kind == "audio":
             p.aid = t["id"]
             self.settings["audio_lang"] = t.get("lang") or ""
@@ -768,6 +823,7 @@ class TVWindow(QMainWindow):
 
     def _on_restart(self):
         self._apply_track_prefs()
+        self._apply_zoom()
         token = self.token
         seg = self.seg
         if (seg is not None and not seg.is_stream and not self.corrected

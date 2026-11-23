@@ -479,13 +479,52 @@ def link_pool(slug: str, number: int, shows: list[tuple[str, str, str]], own_fol
             card(f"card_today_{k + 1}.mp4", 15, {"kind": "onthisday", "channel": number})
     (d / "cards.json").write_text(json.dumps({"cards": cards, "onthisday": today}, indent=1))
 
-    if own_folder and Path(own_folder).is_dir():
-        n = 0
-        for f in sorted(Path(own_folder).rglob("*")):
-            if f.is_file() and f.suffix.lower() in VIDEO_EXT:
+    # the owner's own commercials: this channel's folder, then the shared ones from Settings
+    seen: set[str] = set()
+    n = 0
+    for folder in [own_folder] + commercial_folders():
+        if not folder or not Path(folder).is_dir():
+            continue
+        for f in sorted(Path(folder).rglob("*")):
+            if (f.is_file() and f.suffix.lower() in VIDEO_EXT and not f.name.startswith(".")
+                    and str(f) not in seen):
+                seen.add(str(f))
                 n += 1
                 (d / f"own_{n:03d}{f.suffix.lower()}").symlink_to(f)
     return d
+
+
+def commercial_folders() -> list[str]:
+    """Settings → Commercial folders: the owner's own commercials, for every channel with breaks."""
+    from . import settings
+
+    return [f for f in settings.load().get("commercial_folders", []) if f]
+
+
+_sig_cache: tuple[float, str] | None = None
+
+
+def commercials_signature() -> str:
+    """Changes when a commercial folder is added/removed or a clip is added/removed in one (every
+    folder's modification time, subfolders included), so those channels show "needs build"."""
+    global _sig_cache
+    import os
+    import time
+
+    if _sig_cache and time.monotonic() - _sig_cache[0] < 10:
+        return _sig_cache[1]
+    parts = []
+    for folder in commercial_folders():
+        parts.append(folder)
+        for root, dirs, _files in os.walk(folder):
+            dirs[:] = [x for x in dirs if not x.startswith(".")]
+            try:
+                parts.append(f"{root}:{os.stat(root).st_mtime_ns}")
+            except OSError:
+                pass
+    sig = "|".join(parts)
+    _sig_cache = (time.monotonic(), sig)
+    return sig
 
 
 def kind_of(path: str) -> tuple[str, str] | None:

@@ -294,6 +294,13 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**Commercial folders in Settings (23 Nov)**: `settings.commercial_folders` (list, edited like the library
+folders). `ads.link_pool` links every video in them (subfolders, no dot-files, de-duplicated) as `own_NNN`
+after the channel's own `ad_folder`, for every channel with commercial breaks. `ads.commercials_signature()`
+(folder list + every subfolder's mtime, cached 10 s) is part of `channel_hash`, so adding/removing folders
+or clips marks those channels "needs build" (and, once, every commercial channel after this update).
+The head-end serves files from these folders to cable boxes.
+
 **New-channel flow (23 Nov, owner request)**: name comes last. `NewChannelDialog` = style + number only
 (placeholder name "Channel N"); then the picker; then `NameChannelDialog` (pre-filled with the first
 show's title / film's title, selected; empty or untouched = that suggestion; a taken name is suggested as

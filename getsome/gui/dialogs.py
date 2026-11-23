@@ -861,6 +861,26 @@ class SettingsDialog(QDialog):
         row.addStretch(1)
         lay.addLayout(row)
 
+        lay.addWidget(h2("Commercial folders"))
+        self.cfolders = QListWidget()
+        self.cfolders.addItems(self.s.get("commercial_folders", []))
+        self.cfolders.setMaximumHeight(80)
+        self.cfolders.setTextElideMode(Qt.ElideMiddle)
+        self.cfolders.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        lay.addWidget(self.cfolders)
+        row = QHBoxLayout()
+        addc = button("Add folder…")
+        addc.clicked.connect(lambda: self._add_to(self.cfolders, "Choose a folder of commercials"))
+        rmc = button("Remove")
+        rmc.clicked.connect(lambda: [self.cfolders.takeItem(self.cfolders.row(i)) for i in self.cfolders.selectedItems()])
+        row.addWidget(addc)
+        row.addWidget(rmc)
+        row.addStretch(1)
+        lay.addLayout(row)
+        lay.addWidget(hint("Your own commercials (old TV ads, station idents, trailers…), subfolders included. They play "
+                           "on every channel with “Commercial breaks” ticked. After changing these, press "
+                           "“Build all changed”."))
+
         lay.addWidget(h2("Starting up"))
         self.launch_tv = QCheckBox("Launch straight into TV mode (skip this setup window)")
         self.launch_tv.setChecked(bool(self.s.get("launch_into_tv")))
@@ -1205,6 +1225,7 @@ class SettingsDialog(QDialog):
     def _save_settings(self):
         self.s["library_folders"] = [self.folders.item(i).text() for i in range(self.folders.count())]
         self.s["movie_folders"] = [self.mfolders.item(i).text() for i in range(self.mfolders.count())]
+        self.s["commercial_folders"] = [self.cfolders.item(i).text() for i in range(self.cfolders.count())]
         self.s["launch_into_tv"] = self.launch_tv.isChecked()
         self.s["remember_last_channel"] = self.remember.isChecked()
         self.s["keep_awake"] = self.keep_awake.isChecked()

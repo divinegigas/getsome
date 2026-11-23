@@ -94,7 +94,8 @@ def _allowed_roots() -> list[str]:
     from . import model, settings
 
     s = settings.load()
-    roots = [paths.data_dir()] + [Path(f) for f in s.get("library_folders", []) + s.get("movie_folders", [])]
+    roots = [paths.data_dir()] + [Path(f) for f in s.get("library_folders", []) + s.get("movie_folders", [])
+                                  + s.get("commercial_folders", [])]
     for c in model.load():
         roots += [Path(f) for f in (c.ad_folder, c.infomercials) if f]
         roots += [Path(sh.folder) for sh in c.all_show_refs()]

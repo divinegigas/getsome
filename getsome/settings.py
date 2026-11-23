@@ -57,6 +57,8 @@ DEFAULTS: dict[str, Any] = {
     "library_folders": [],
     # Folders that contain movies
     "movie_folders": [],
+    # Folders of the owner's own commercials (subfolders too), used on every channel with commercial breaks
+    "commercial_folders": [],
 }
 
 

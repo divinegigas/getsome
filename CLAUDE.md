@@ -71,10 +71,22 @@ getsome/tv/              TV mode (app, mpv_widget, overlays, bumpers, intermissi
 ```
 
 ## Owner's setup
-Fedora desktop (KDE Plasma) with an AMD graphics card. TV and movie libraries on an external drive
-(under `/run/media/…`, so it can be unplugged), organised by TinyMediaManager: `Show (Year)/Season N/`
-with `.nfo` files and artwork. The repo is cloned at `~/getsome`.
-Privacy: don't record personal details (paths, user names, hardware, library contents) in these docs.
+- Head-end / main PC: Fedora desktop (KDE Plasma) with an AMD graphics card. TV and movie libraries on an
+  external drive (under `/run/media/…`, so it can be unplugged), organised by TinyMediaManager:
+  `Show (Year)/Season N/` with `.nfo` files and artwork. The repo is cloned at `~/getsome`.
+- Cable box: Bazzite, deck edition (GNOME, NVIDIA graphics), which boots into Steam Game Mode; mpv-libs
+  layered with rpm-ostree (ffmpeg comes with Bazzite). Repo cloned at `~/getsome`.
+- Controls: a USB IR remote (keyboard on the back) and game controllers; Steam / Big Picture shortcuts.
+
+## Privacy rules for these docs (the owner's aim: nothing that could open a path into their PCs, and no
+record of what they watch)
+- **OK to record:** anonymous hardware and system details (OS, edition, desktop, GPU make, what is
+  installed) when they help development.
+- **Never record:** network details (IP addresses, computer names, user names or paths containing them,
+  ports opened or forwarded on the owner's network, firewall setup); anything about content or viewing
+  (show or film titles, channel line-ups, library size, what or when they watch); secrets (PINs, tokens).
+- The app's own built-in defaults (e.g. ports 4242/4243) are functionality, the same for every install,
+  and may be documented.
 
 ## Git
 Work on branch `claude/cable-tv-gui-review-gdkexf` (the only branch) and push there. Commit in logical steps

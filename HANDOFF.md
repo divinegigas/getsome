@@ -289,7 +289,7 @@ reading the remote via evdev, which needs input-device permissions).
   Range, TV tuning/playing over HTTP, restricted lock, guide). **Untested: real two-PC LAN, Bazzite.** The box
   still needs libmpv + ffmpeg (it generates its own bars/music); if Bazzite lacks them, the AppImage (phase 2)
   solves it, or `rpm-ostree install mpv-libs`. In Steam Game Mode the box gets an X11 window (remote OK lost there).
-- First real setup (Bazzite as the cable box): Bazzite ships ffmpeg; mpv-libs needed `rpm-ostree install` and a
+- First real setup (cable box: Bazzite deck edition, GNOME, NVIDIA; boots to Game Mode): Bazzite ships ffmpeg; mpv-libs needed `rpm-ostree install` and a
   restart (getsome.sh now says so on Atomic systems). Fixed: the setup window's Watch TV refused ("Build a
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.

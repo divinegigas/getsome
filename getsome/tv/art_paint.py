@@ -16,6 +16,7 @@ import zlib
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFontMetricsF, QLinearGradient, QPainter, QPen
 
+from .. import paths  # noqa: E402
 from .ads_paint import _ease, _fit, _image, _text
 from .overlays import CYAN, PINK, YELLOW, _chrome_text, draw_neon, font
 
@@ -183,7 +184,7 @@ def spotlight(p: QPainter, w: int, h: int, info: dict, t: float, dur: float) -> 
             line = (info.get("when") or "").upper() or f"ONLY ON CHANNEL {info.get('channel', '')}"
             _text(p, line, _fit(line, "numbers", int(56 * unit), bar.width() * 0.9), w / 2,
                   bar.center().y() + 20 * unit, QColor("#ffffff"), "numbers", outline=None)
-    _text(p, f"CHANNEL {info.get('channel', '')}  ·  NEON CABLE 42", int(30 * unit), w / 2, h * 0.94, QColor(CYAN))
+    _text(p, f"CHANNEL {info.get('channel', '')}  ·  {paths.APP_NAME.upper()}", int(30 * unit), w / 2, h * 0.94, QColor(CYAN))
 
 
 def stills(p: QPainter, w: int, h: int, info: dict, t: float, dur: float) -> None:
@@ -255,8 +256,8 @@ def wall(p: QPainter, w: int, h: int, info: dict, t: float, dur: float) -> None:
     draw_neon(p, str(info.get("channel", "")), "numbers", int(330 * unit), PINK, w / 2, h * 0.44, "cm", flicker=True)
     p.setOpacity(1)
     _text(p, "YOU'RE WATCHING", int(46 * unit), w / 2, h * 0.16, QColor(CYAN))
-    tw = QFontMetricsF(font("text", int(76 * unit))).horizontalAdvance("NEON CABLE 42")
-    _chrome_text(p, "NEON CABLE 42", int(76 * unit), w / 2 - tw / 2, h * 0.80)
+    tw = QFontMetricsF(font("text", int(76 * unit))).horizontalAdvance(f"{paths.APP_NAME.upper()}")
+    _chrome_text(p, f"{paths.APP_NAME.upper()}", int(76 * unit), w / 2 - tw / 2, h * 0.80)
     if info.get("name") and t > 1.2:
         _text(p, info["name"].upper(), _fit(info["name"].upper(), "text", int(44 * unit), w * 0.8), w / 2, h * 0.90,
               QColor(YELLOW))

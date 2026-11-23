@@ -59,7 +59,7 @@ class Hiss:
             if not wav.exists():
                 _make_wav(wav)
             self._mpv = mpv.MPV(video=False, config=False, idle=True, loop_file="inf", pause=True,
-                                volume=volume, audio_client_name="Neon Cable 42 static", loglevel="error")
+                                volume=volume, audio_client_name=f"{paths.APP_NAME} static", loglevel="error")
             self._mpv.command("loadfile", str(wav), "replace")
         except Exception as e:  # no audio: run silently
             _log.warning("static hiss disabled: %s", e)

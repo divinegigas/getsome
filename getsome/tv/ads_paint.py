@@ -14,6 +14,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (QColor, QFontMetricsF, QImage, QLinearGradient, QPainter, QPainterPath, QPen,
                            QPolygonF, QRadialGradient)
 
+from .. import paths  # noqa: E402
 from .overlays import CYAN, PINK, YELLOW, _chrome_text, draw_neon, font
 
 from collections import OrderedDict
@@ -419,8 +420,8 @@ def _station_id(p, w, h, info, t, dur):
     p.setOpacity(1)
     if dur >= 4:
         _text(p, "YOU'RE WATCHING", int(44 * unit), w / 2, h * 0.16, QColor(CYAN))
-    tw = QFontMetricsF(font("text", int(70 * unit))).horizontalAdvance("NEON CABLE 42")
-    _chrome_text(p, "NEON CABLE 42", int(70 * unit), w / 2 - tw / 2, h * 0.80)
+    tw = QFontMetricsF(font("text", int(70 * unit))).horizontalAdvance(f"{paths.APP_NAME.upper()}")
+    _chrome_text(p, f"{paths.APP_NAME.upper()}", int(70 * unit), w / 2 - tw / 2, h * 0.80)
 
 
 def _sting(p, w, h, info, t, dur):

@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(1200, self._offer_app_menu)
 
     def _offer_app_menu(self) -> None:
-        """Once: offer to put Neon Cable 42 in the app menu (it's also in Settings > Shortcuts)."""
+        ""f"Once: offer to put {paths.APP_NAME} in the app menu (it's also in Settings > Shortcuts)."""
         from PySide6.QtWidgets import QMessageBox
 
         from .. import desktop, settings
@@ -149,7 +149,7 @@ class MainWindow(QMainWindow):
             return
         s["menu_offered"] = True
         settings.save(s)
-        if QMessageBox.question(self, "App menu", "Add Neon Cable 42 to your app menu (Sound & Video / Multimedia)?\n\n"
+        if QMessageBox.question(self, "App menu", f"Add {paths.APP_NAME} to your app menu (Sound & Video / Multimedia)?\n\n"
                                 "You can change this any time in Settings > Shortcuts.") == QMessageBox.Yes:
             try:
                 desktop.install()
@@ -446,7 +446,7 @@ class MainWindow(QMainWindow):
         if box:
             # a cable box has no channels of its own: TV mode watches the head-end's
             try:
-                cablebox.hello(box["host"], box.get("port", 4242))
+                cablebox.hello(box["host"], box.get("port"))
             except cablebox.Unreachable:
                 QMessageBox.warning(self, "Can't reach the head-end",
                                     f"This computer is a cable box for {box.get('name')} ({box['host']}), but that "
@@ -504,7 +504,7 @@ def run_setup() -> int:
 
     assets_gen.start_music_background()
     app.setApplicationName(paths.APP_NAME)
-    app.setDesktopFileName("getsome")       # groups windows under the app-menu icon (Wayland app id)
+    app.setDesktopFileName(paths.APP_SLUG)       # groups windows under the app-menu icon (Wayland app id)
     try:
         from PySide6.QtGui import QIcon
 
@@ -524,7 +524,7 @@ def run_setup() -> int:
 
 
 def _steam_art_later() -> None:
-    """If Neon Cable 42 was added to Steam by hand, give its shortcut our artwork (once)."""
+    ""f"If {paths.APP_NAME} was added to Steam by hand, give its shortcut our artwork (once)."""
     from PySide6.QtCore import QTimer
 
     def go():

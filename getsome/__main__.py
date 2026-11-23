@@ -21,6 +21,8 @@ import logging
 import sys
 from pathlib import Path
 
+from . import paths
+
 
 def _setup_logging(verbose: bool) -> None:
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO,
@@ -91,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("remove-from-menu", help="remove Neon Cable 42 from the desktop app menu")
     sub.add_parser("upkeep", help="extend schedules running short and rebuild any that ended")
     sv = sub.add_parser("serve", help="share this computer's channels with cable boxes on the home network")
-    sv.add_argument("--port", type=int, default=4242)
+    sv.add_argument("--port", type=int, default=None)
 
     args = p.parse_args(argv)
     _setup_logging(args.verbose)
@@ -199,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
 
         chans = model.load()
         if not chans:
-            print("No channels yet. Run  ./getsome.sh  to open the setup window.")
+            print(f"No channels yet. Run  ./{paths.LAUNCHER}  to open the setup window.")
         numbers = [c.number for c in chans]
         for c in chans:
             end = fs42.schedule_end(c.name) if c.built_hash else None
@@ -228,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "serve":
         from . import headend
 
-        headend.serve(args.port)
+        headend.serve(args.port or headend.PORT)
         return 0
 
     if cmd == "upkeep":

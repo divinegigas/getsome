@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
                                QListWidget, QListWidgetItem, QMessageBox, QSpinBox, QStackedWidget, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
 
+from .. import paths  # noqa: E402
 from .. import autopop, library, model, settings
 from .dialogs import ScanDialog, button, choose_folder, h2, hint
 
@@ -52,7 +53,7 @@ class AutoPopulateDialog(QDialog):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.addWidget(h2("Auto-create channels"))
-        lay.addWidget(hint("Pick the folders to use and Neon Cable 42 suggests channels of similar shows, using the "
+        lay.addWidget(hint(f"Pick the folders to use and {paths.APP_NAME} suggests channels of similar shows, using the "
                            "genres, age ratings and years in your .nfo files. Films get movie channels of their own. "
                            "You can change everything before anything is created, and your existing channels "
                            "are kept as they are."))

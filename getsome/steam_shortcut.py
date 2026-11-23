@@ -144,7 +144,7 @@ def shortcut_appid(exe: str, name: str) -> int:
 def _is_ours(entry: dict) -> bool:
     exe = str(entry.get("Exe") or entry.get("exe") or "")
     name = str(entry.get("AppName") or entry.get("appname") or "")
-    return "getsome.sh" in exe or name.strip().lower() == paths.APP_NAME.lower()
+    return paths.LAUNCHER in exe or name.strip().lower() == paths.APP_NAME.lower()
 
 
 def _entry_appid(entry: dict) -> int:
@@ -165,7 +165,7 @@ def _read_shortcuts(cfg: Path) -> dict:
 
 
 def our_shortcuts() -> list[tuple[Path, int]]:
-    """(account config folder, appid) of every Steam shortcut that starts Neon Cable 42."""
+    ""f"(account config folder, appid) of every Steam shortcut that starts {paths.APP_NAME}."""
     out = []
     for cfg in accounts():
         try:
@@ -201,7 +201,7 @@ def write_artwork(cfg: Path, appid: int, only_missing: bool = True) -> int:
 
 
 def ensure_artwork() -> int:
-    """Startup safety net: add artwork to Neon Cable 42 shortcuts that have none. Returns images written."""
+    ""f"Startup safety net: add artwork to {paths.APP_NAME} shortcuts that have none. Returns images written."""
     total = 0
     for cfg, appid in our_shortcuts():
         try:
@@ -260,9 +260,9 @@ def add_to_steam() -> str:
         write_artwork(cfg, appid, only_missing=bool(mine))
     who = f"{len(cfgs)} Steam accounts" if len(cfgs) > 1 else "your Steam account"
     if added and not refreshed:
-        return (f"Added to {who} with its artwork. Open Steam: Neon Cable 42 is in your library and starts "
+        return (f"Added to {who} with its artwork. Open Steam: {paths.APP_NAME} is in your library and starts "
                 "straight in TV mode.")
     if added:
         return f"Added to Steam where it was missing, with artwork, for {who}."
-    return ("Neon Cable 42 was already in Steam; any missing artwork has been added. "
+    return (f"{paths.APP_NAME} was already in Steam; any missing artwork has been added. "
             "Restart Steam to see it.")

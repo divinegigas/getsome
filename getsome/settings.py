@@ -40,7 +40,7 @@ DEFAULTS: dict[str, Any] = {
     # What you hear on the guide: "music" (guide music) or "preview" (the preview channel's sound)
     "guide_audio": "music",
     # Fake product ads in commercial breaks: "none", "few" or "lots" (show cards always play)
-    "ads_products": "few",
+    "ads_products": "none" if paths.XCABLE else "few",
     # Window type when Steam starts Neon Cable 42 on a Wayland desktop: "wayland" (every remote button
     # works) or "x11" (fallback if Big Picture shows sound but no picture; the remote's OK key is lost)
     "steam_window": "wayland",

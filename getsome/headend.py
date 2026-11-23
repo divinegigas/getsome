@@ -35,7 +35,7 @@ from urllib.parse import unquote
 from . import paths
 
 _log = logging.getLogger("getsome.headend")
-PORT, DISCOVERY_PORT = 4242, 4243
+PORT, DISCOVERY_PORT = (4252, 4253) if paths.XCABLE else (4242, 4243)   # editions never mix
 PROTOCOL = 1
 PAIR_MINUTES = 10
 
@@ -398,7 +398,7 @@ def running() -> bool:
 
 def _autostart_file() -> Path:
     base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-    return base / "autostart" / "neon-cable-42-headend.desktop"
+    return base / "autostart" / f"{'xcable' if paths.XCABLE else 'neon-cable-42'}-headend.desktop"
 
 
 def enable() -> None:
@@ -409,7 +409,7 @@ def enable() -> None:
 
     f = _autostart_file()
     f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text("[Desktop Entry]\nType=Application\nName=Neon Cable 42 head-end\n"
+    f.write_text(f"[Desktop Entry]\nType=Application\nName={paths.APP_NAME} head-end\n"
                  f'Exec="{desktop.launcher()}" serve\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n')
     if not running():
         subprocess.Popen(["/bin/bash", str(desktop.launcher()), "serve"], cwd=str(paths.APP_DIR.parent),

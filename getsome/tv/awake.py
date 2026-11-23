@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import logging
 import os
+from .. import paths
 
 _log = logging.getLogger("getsome.awake")
-APP, WHY = "Neon Cable 42", "Watching TV"
+APP, WHY = f"{paths.APP_NAME}", "Watching TV"
 
 # (bus name, object path, interface, inhibit method, signature, args, release method)
 SESSION_CALLS = [

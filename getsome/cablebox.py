@@ -47,7 +47,9 @@ def active() -> bool:
 
 
 def base() -> str:
-    return f"http://{_conf['host']}:{_conf.get('port', 4242)}"
+    from .headend import PORT
+
+    return f"http://{_conf['host']}:{_conf.get('port', PORT)}"
 
 
 # ------------------------------------------------------------------ talking to the head-end
@@ -95,6 +97,8 @@ def discover(wait: float = 1.5) -> list[dict]:
                 hello = json.loads(data)
             except ValueError:
                 continue
+            if hello.get("app") != paths.APP_NAME:
+                continue                      # the other edition's head-end
             if addr[0] not in seen:
                 seen.add(addr[0])
                 out.append({"host": addr[0], **hello})
@@ -105,7 +109,10 @@ def discover(wait: float = 1.5) -> list[dict]:
     return out
 
 
-def hello(host: str, port: int = 4242) -> dict:
+def hello(host: str, port: int | None = None) -> dict:
+    from .headend import PORT
+
+    port = port or PORT
     try:
         with urllib.request.urlopen(f"http://{host}:{port}/api/hello", timeout=4) as r:
             return json.loads(r.read())
@@ -113,10 +120,13 @@ def hello(host: str, port: int = 4242) -> dict:
         raise Unreachable(str(e)) from e
 
 
-def pair(host: str, code: str, port: int = 4242) -> dict:
+def pair(host: str, code: str, port: int | None = None) -> dict:
     """Pair with a head-end using the code it shows; saves and returns the cable-box settings."""
     from . import settings
 
+    from .headend import PORT
+
+    port = port or PORT
     res = _post(f"http://{host}:{port}/api/pair", {"code": code, "box": socket.gethostname()})
     if "token" not in res:
         raise Unreachable(res.get("error", "pairing failed"))

@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QMessageBox, QVBoxLayout)
 
+from .. import paths  # noqa: E402
 from .. import cablebox, headend, settings
 from .dialogs import button, h2, hint
 
@@ -110,7 +111,7 @@ class PairCodeDialog(QDialog):
         big.setAlignment(Qt.AlignCenter)
         big.setTextInteractionFlags(Qt.TextSelectableByMouse)
         lay.addWidget(big)
-        lay.addWidget(hint("On the other computer: open Neon Cable 42 → Settings → Home network → "
+        lay.addWidget(hint(f"On the other computer: open {paths.APP_NAME} → Settings → Home network → "
                            "“Connect to a head-end…”, pick this computer and type this code. "
                            f"It works for {headend.PAIR_MINUTES} minutes."))
         ok = button("Done", "primary")
@@ -187,7 +188,7 @@ class ConnectDialog(QDialog):
                                     "code it shows (Settings → Home network → Pair a cable box).")
             return
         try:
-            conf = cablebox.pair(host, code, int(port or 4242))
+            conf = cablebox.pair(host, code, int(port) if port else None)
         except cablebox.Unreachable as e:
             QMessageBox.warning(self, "Connect", f"That didn't work: {e}\n\nCheck the code (it lasts "
                                 f"{headend.PAIR_MINUTES} minutes) and that both computers are on the same network.")

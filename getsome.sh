@@ -6,11 +6,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV="$HERE/.venv"
 PY="${GETSOME_PYTHON:-python3}"
 
+NAME="${GETSOME_APP_NAME:-Neon Cable 42}"
 need() { command -v "$1" >/dev/null 2>&1; }
 # started from the app menu there's no terminal to read errors in: show a notification too
 fail() {
   echo "$1" >&2
-  if [ ! -t 2 ] && need notify-send; then notify-send -a "Neon Cable 42" "Neon Cable 42 can't start" "$1"; fi
+  if [ ! -t 2 ] && need notify-send; then notify-send -a "$NAME" "$NAME can't start" "$1"; fi
   exit 1
 }
 # Bazzite / Fedora Atomic (Silverblue, Kinoite …) install packages with rpm-ostree, then a restart
@@ -23,17 +24,17 @@ how() {
   fi
 }
 if ! need ffmpeg || ! need ffprobe; then
-  fail "Neon Cable 42 needs ffmpeg. $(how ffmpeg-free)"
+  fail "$NAME needs ffmpeg. $(how ffmpeg-free)"
 fi
 if ! "$PY" -c "import ctypes.util, sys; sys.exit(0 if ctypes.util.find_library('mpv') else 1)"; then
-  fail "Neon Cable 42 needs libmpv. $(how mpv-libs)"
+  fail "$NAME needs libmpv. $(how mpv-libs)"
 fi
 if [ ! -f "$HERE/vendor/FieldStation42/station_42.py" ]; then
   git -C "$HERE" submodule update --init --recursive
 fi
 if [ ! -x "$VENV/bin/python" ] || [ "$HERE/requirements.txt" -nt "$VENV/.installed" ]; then
   echo "Setting up Python environment (first run only)..."
-  if [ ! -t 1 ] && need notify-send; then notify-send -a "Neon Cable 42" "Neon Cable 42" "Setting up (first run only, about a minute)…"; fi
+  if [ ! -t 1 ] && need notify-send; then notify-send -a "$NAME" "$NAME" "Setting up (first run only, about a minute)…"; fi
   "$PY" -m venv "$VENV"
   "$VENV/bin/pip" install --quiet --upgrade pip
   "$VENV/bin/pip" install --quiet -r "$HERE/requirements.txt"

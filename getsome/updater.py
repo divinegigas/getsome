@@ -90,7 +90,7 @@ class Check:
 
 def check() -> Check:
     if not available():
-        raise UpdateError("this copy of Neon Cable 42 isn't a git checkout, so it can't update itself")
+        raise UpdateError(f"this copy of {paths.APP_NAME} isn't a git checkout, so it can't update itself")
     _git("fetch", "--quiet", "origin")
     up = _upstream()
     behind = int(_git("rev-list", "--count", f"HEAD..{up}") or 0)
@@ -99,7 +99,7 @@ def check() -> Check:
     if behind:
         dirty = _dirty()
         if dirty:
-            res.blocked = ("some Neon Cable 42 program files were edited on this computer "
+            res.blocked = (f"some {paths.APP_NAME} program files were edited on this computer "
                            f"({len(dirty)} file(s)), so the update would overwrite them")
     return res
 
@@ -111,7 +111,7 @@ def apply() -> None:
     up = _upstream()
     if _rewritten(up):
         if _dirty():
-            raise UpdateError("some Neon Cable 42 program files were edited on this computer, "
+            raise UpdateError(f"some {paths.APP_NAME} program files were edited on this computer, "
                               "so the update would overwrite them")
         _log.info("history on GitHub was rewritten: moving to %s", up)
         _git("reset", "--hard", "--quiet", up, timeout=120)
@@ -128,5 +128,5 @@ def apply() -> None:
 def restart(args: list[str]) -> None:
     """Replace this process with a fresh GetSome started through getsome.sh."""
     os.chdir(REPO)
-    script = str(REPO / "getsome.sh")
+    script = str(REPO / paths.LAUNCHER)
     os.execv("/bin/bash", ["/bin/bash", script, *args])

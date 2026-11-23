@@ -493,9 +493,9 @@ class TVWindow(QMainWindow):
                                 "TODAY" if prog.start.date() == dt.date.today() else "TOMORROW")
                             info["when"] = f"{day} AT {prog.start.strftime('%-I:%M %p')}"
                             return
-                    info["when"] = "ONLY ON NEON CABLE 42"
+                    info["when"] = f"ONLY ON {paths.APP_NAME.upper()}"
                 except Exception:
-                    info["when"] = "ONLY ON NEON CABLE 42"
+                    info["when"] = f"ONLY ON {paths.APP_NAME.upper()}"
 
             threading.Thread(target=find_when, daemon=True).start()
         elif kind in ("brb", "back"):
@@ -1144,7 +1144,7 @@ def run_tv(windowed: bool = False, start_channel: int | None = None) -> int:
     cablebox.install()              # a cable box asks the head-end instead of its own channels
     assets_gen.start_music_background()
     app.setApplicationName(paths.APP_NAME)
-    app.setDesktopFileName("getsome")       # groups windows under the app-menu icon (Wayland app id)
+    app.setDesktopFileName(paths.APP_SLUG)       # groups windows under the app-menu icon (Wayland app id)
     try:
         from PySide6.QtGui import QIcon
 

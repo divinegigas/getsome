@@ -294,7 +294,7 @@ def show_facts(folder: Path, title: str, channel: int | str = "") -> tuple[list[
         facts.append(f"{title} premiered on {_date_text(premiered)}" + (f" on {studio}." if studio else "."))
     cast = _actors(xml, 12)
     roles = dict(cast)
-    on = f"here on Channel {channel}" if channel else "here on Neon Cable 42"
+    on = f"here on Channel {channel}" if channel else f"here on {paths.APP_NAME}"
     tagline = _xml_tag(xml, "tagline")
     if tagline:
         facts.append(f"“{tagline}”")

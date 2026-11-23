@@ -15,6 +15,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QOpenGLContext, QPainter
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
+from .. import paths
+
 _log = logging.getLogger("getsome.mpv")
 
 
@@ -53,7 +55,7 @@ class MpvWidget(QOpenGLWidget):
             hwdec=hwdec,
             volume=volume,
             image_display_duration="inf",
-            audio_client_name="Neon Cable 42",
+            audio_client_name=f"{paths.APP_NAME}",
             network_timeout=10,
             loglevel="warn",
         )

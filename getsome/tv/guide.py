@@ -15,6 +15,7 @@ import time
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFontMetricsF, QImage, QLinearGradient, QPainter, QPainterPath, QPen
 
+from .. import paths  # noqa: E402
 from .. import fs42
 from . import overlays
 from .overlays import CYAN, PINK, YELLOW, _chrome_text, draw_neon, font
@@ -123,7 +124,7 @@ class GuideRenderer:
         draw_neon(p, "TV GUIDE", "numbers", int(88 * unit), PINK, 56 * unit, 22 * unit, "tl", flicker=True)
         p.setFont(font("text", int(28 * unit)))
         p.setPen(QColor(CYAN))
-        p.drawText(QPointF(66 * unit, 180 * unit), "NEON CABLE 42  ·  YOUR CHANNEL LINEUP")
+        p.drawText(QPointF(66 * unit, 180 * unit), f"{paths.APP_NAME.upper()}  ·  YOUR CHANNEL LINEUP")
         clock = now.strftime("%-I:%M")
         cw = _chrome_text(p, clock, int(84 * unit), 64 * unit, 286 * unit)
         p.setFont(font("text", int(30 * unit)))

@@ -11,7 +11,14 @@ AppImage) stays read-only:
 import os
 from pathlib import Path
 
-APP_NAME = "Neon Cable 42"          # the name people see (folders and the package stay "getsome")
+# Editions: the same program under two names and looks, with completely separate data.
+#   Neon Cable 42 (getsome.sh): synthwave neon; folders ~/.local/share/getsome, ~/.config/getsome
+#   XCable (xcable.sh sets GETSOME_EDITION=xcable): black & gold club look, jazz; folders .../xcable
+XCABLE = os.environ.get("GETSOME_EDITION", "").strip().lower() == "xcable"
+EDITION = "xcable" if XCABLE else "neon"
+APP_NAME = "XCable" if XCABLE else "Neon Cable 42"     # the name people see
+APP_SLUG = "xcable" if XCABLE else "getsome"           # folder names, app-menu id, Wayland app id
+LAUNCHER = "xcable.sh" if XCABLE else "getsome.sh"
 APP_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = APP_DIR / "assets"
 FONTS_DIR = ASSETS_DIR / "fonts"
@@ -31,7 +38,7 @@ def fs42_source_dir() -> Path:
 
 def _xdg(var: str, fallback: str) -> Path:
     base = os.environ.get(var) or str(Path.home() / fallback)
-    return Path(base) / "getsome"
+    return Path(base) / APP_SLUG
 
 
 def config_dir() -> Path:

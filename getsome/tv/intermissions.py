@@ -19,6 +19,7 @@ import random
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFontMetricsF, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
 
+from .. import paths
 from .overlays import CYAN, PINK, YELLOW, _chrome_text, draw_neon, font
 
 STYLES = 5
@@ -309,7 +310,7 @@ def teletext(p: QPainter, w: int, h: int, info: dict, t: float, remaining: float
 
     now = dt.datetime.now()
     put(0, 0, f"P{100 + int(info.get('channel') or 0):03d}", "w")
-    put(6, 0, "NC42 TEXT", "y")
+    put(6, 0, "XC TEXT" if paths.XCABLE else "NC42 TEXT", "y")
     put(20, 0, now.strftime("%a %d %b"), "c")
     put(32, 0, now.strftime("%H:%M:%S"), "y")
     # banner

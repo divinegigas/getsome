@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import paths
 
-APP_ID = "getsome"          # also the Wayland app id (QGuiApplication.setDesktopFileName)
+APP_ID = paths.APP_SLUG     # also the Wayland app id (QGuiApplication.setDesktopFileName)
 
 
 def _apps_dir() -> Path:
@@ -27,11 +27,11 @@ def desktop_file() -> Path:
 
 
 def icon_file() -> Path:
-    return paths.data_dir() / "icon" / "getsome.png"
+    return paths.data_dir() / "icon" / f"{APP_ID}.png"
 
 
 def launcher() -> Path:
-    return paths.APP_DIR.parent / "getsome.sh"
+    return paths.APP_DIR.parent / paths.LAUNCHER
 
 
 def installed() -> bool:
@@ -94,9 +94,9 @@ def _entry() -> str:
     return f"""[Desktop Entry]
 Type=Application
 Version=1.0
-Name=Neon Cable 42
+Name={paths.APP_NAME}
 GenericName=Cable TV
-Comment=90s-style cable TV from your own shows and movies
+Comment={"Late-night premium cable" if paths.XCABLE else "90s-style cable TV"} from your own shows and movies
 Exec={exe}
 Icon={icon_file()}
 Terminal=false

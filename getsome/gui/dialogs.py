@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QPushButton, QSlider, QSpinBox, QVBoxLayout, QWidget,
 )
 
+from .. import paths  # noqa: E402
 from .. import library, model, settings
 from . import theme
 from .workers import BuildWorker, ScanWorker
@@ -757,7 +758,7 @@ class SettingsDialog(QDialog):
         row.addWidget(self.desk_btn)
         lay.addLayout(row)
         row = QHBoxLayout()
-        steam_label = QLabel("Steam: adds Neon Cable 42 to your Steam library with its own artwork, starting "
+        steam_label = QLabel(f"Steam: adds {paths.APP_NAME} to your Steam library with its own artwork, starting "
                              "straight in TV mode (great for Big Picture). Close Steam first.")
         steam_label.setObjectName("dim")
         steam_label.setWordWrap(True)
@@ -817,7 +818,7 @@ class SettingsDialog(QDialog):
         self.launch_tv = QCheckBox("Launch straight into TV mode (skip this setup window)")
         self.launch_tv.setChecked(bool(self.s.get("launch_into_tv")))
         lay.addWidget(self.launch_tv)
-        lay.addWidget(hint("You can always reach setup again with:  ./getsome.sh setup"))
+        lay.addWidget(hint(f"You can always reach setup again with:  ./{paths.LAUNCHER} setup"))
         self.remember = QCheckBox("Start on the last channel watched")
         self.remember.setChecked(bool(self.s.get("remember_last_channel", True)))
         lay.addWidget(self.remember)
@@ -957,7 +958,7 @@ class SettingsDialog(QDialog):
         lay.addWidget(h2("Updates"))
         row = QHBoxLayout()
         self.update_label = QLabel(f"Version {updater.version()}" if updater.available()
-                                   else "This copy of Neon Cable 42 can't update itself.")
+                                   else f"This copy of {paths.APP_NAME} can't update itself.")
         self.update_label.setObjectName("dim")
         self.update_label.setWordWrap(True)
         row.addWidget(self.update_label, 1)
@@ -966,7 +967,7 @@ class SettingsDialog(QDialog):
         self.update_btn.clicked.connect(self._check_updates)
         row.addWidget(self.update_btn)
         lay.addLayout(row)
-        lay.addWidget(hint("Downloads the newest Neon Cable 42 and restarts. Your channels, settings and media are kept."))
+        lay.addWidget(hint(f"Downloads the newest {paths.APP_NAME} and restarts. Your channels, settings and media are kept."))
 
         if hasattr(parent, "cleanup"):
             lay.addWidget(h2("Maintenance"))
@@ -1010,12 +1011,12 @@ class SettingsDialog(QDialog):
         from .. import desktop
 
         on = desktop.installed()
-        self.menu_label.setText("Neon Cable 42 is in your app menu (Sound & Video / Multimedia). "
+        self.menu_label.setText(f"{paths.APP_NAME} is in your app menu (Sound & Video / Multimedia). "
                                 "Right-click it for Watch TV." if on else
-                                "Put Neon Cable 42 in your app menu, under Sound & Video / Multimedia.")
+                                f"Put {paths.APP_NAME} in your app menu, under Sound & Video / Multimedia.")
         self.menu_btn.setText("Remove from app menu" if on else "Add to app menu")
         d = desktop.desktop_shortcut_installed()
-        self.desk_label.setText("There's a Neon Cable 42 shortcut on your desktop." if d else
+        self.desk_label.setText(f"There's a {paths.APP_NAME} shortcut on your desktop." if d else
                                 "A double-click shortcut on your desktop (shows on KDE; GNOME hides desktop icons).")
         self.desk_btn.setText("Remove desktop shortcut" if d else "Add desktop shortcut")
 
@@ -1028,7 +1029,7 @@ class SettingsDialog(QDialog):
             else:
                 desktop.install()
                 QMessageBox.information(self, "App menu", "Added! Look under Sound & Video (GNOME) or Multimedia "
-                                        "(KDE), or just search for “Neon Cable 42”.\n\nIf it doesn't show up "
+                                        f"(KDE), or just search for “{paths.APP_NAME}”.\n\nIf it doesn't show up "
                                         "straight away, log out and back in once.")
         except Exception as e:
             QMessageBox.warning(self, "App menu", f"Couldn't change the app menu: {e}")
@@ -1099,9 +1100,9 @@ class SettingsDialog(QDialog):
         text = ("What's new:\n\n" + "\n".join(f"•  {c}" for c in shown) + more +
                 ("\n\nThis update also clears out the old version history (on GitHub and on this computer). "
                  "Your channels, settings and media are not affected." if getattr(res, "rewritten", False) else "")
-                + "\n\nInstall now? Neon Cable 42 will restart (the first start after an update can take a minute)."
+                + f"\n\nInstall now? {paths.APP_NAME} will restart (the first start after an update can take a minute)."
                 + ("\n\nTV mode is open and will be closed." if tv_on else ""))
-        if QMessageBox.question(self, "Update Neon Cable 42", text) != QMessageBox.Yes:
+        if QMessageBox.question(self, f"Update {paths.APP_NAME}", text) != QMessageBox.Yes:
             return
         if tv_on:
             main.tv_proc.terminate()

@@ -294,6 +294,12 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**New-channel flow (23 Nov, owner request)**: name comes last. `NewChannelDialog` = style + number only
+(placeholder name "Channel N"); then the picker; then `NameChannelDialog` (pre-filled with the first
+show's title / film's title, selected; empty or untouched = that suggestion; a taken name is suggested as
+"… 2"). `dialogs.enter_presses(dialog, ok)` makes Enter press only the "continue" button (the style
+cards are QPushButtons and used to catch Enter) in the new-channel, name and both picker dialogs.
+
 **XCable edition (23 Nov)**: the owner wanted a second, separate install for a separate library, hard to
 confuse with Neon Cable 42: "premium cable" (black and gold, gentleman's club), groovy bass-led jazz,
 no restrictions by default. Built as an edition of the same code (see CLAUDE.md "Two editions"):

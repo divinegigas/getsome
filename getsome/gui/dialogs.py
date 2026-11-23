@@ -30,6 +30,15 @@ def hint(text: str) -> QLabel:
     return lab
 
 
+def enter_presses(dialog: QDialog, ok: QPushButton) -> None:
+    """Make Enter press `ok` (the "continue" button) and nothing else in this dialog."""
+    for b in dialog.findChildren(QPushButton):
+        b.setAutoDefault(False)
+        b.setDefault(False)
+    ok.setAutoDefault(True)
+    ok.setDefault(True)
+
+
 def button(text: str, kind: str | None = None) -> QPushButton:
     b = QPushButton(text)
     if kind:
@@ -178,7 +187,7 @@ def usage_ok(it: QListWidgetItem, want) -> bool:
 
 
 class NewChannelDialog(QDialog):
-    """Pick a template, a name and a number."""
+    """Pick a style and a number. The name comes at the end (NameChannelDialog), once there's content."""
 
     def __init__(self, channels: list[model.Channel], parent=None):
         super().__init__(parent)
@@ -195,20 +204,14 @@ class NewChannelDialog(QDialog):
         self.group.button(0).setChecked(True)
 
         row = QHBoxLayout()
-        col = QVBoxLayout()
-        col.addWidget(h2("Channel"))
+        row.addWidget(h2("Channel number"))
         self.number = QSpinBox()
         self.number.setRange(1, 999)
         self.number.setValue(model.next_free_number(channels))
-        col.addWidget(self.number)
-        row.addLayout(col)
-        col = QVBoxLayout()
-        col.addWidget(h2("Name"))
-        self.name = QLineEdit()
-        self.name.setPlaceholderText("e.g. Trek, Toon Zone, Sci-Fi Nights")
-        col.addWidget(self.name)
-        row.addLayout(col, 1)
+        row.addWidget(self.number)
+        row.addStretch(1)
         lay.addLayout(row)
+        lay.addWidget(hint("You'll name the channel at the end, after picking what's on it."))
         self.error = QLabel("")
         self.error.setObjectName("warn")
         lay.addWidget(self.error)
@@ -223,16 +226,10 @@ class NewChannelDialog(QDialog):
         btns.addWidget(ok)
         lay.addLayout(btns)
         self.channels = channels
-        self.name.setFocus()
+        enter_presses(self, ok)
+        self.number.setFocus()
 
     def _accept(self):
-        name = self.name.text().strip()
-        if not name:
-            self.error.setText("Give the channel a name.")
-            return
-        if model.find(self.channels, name):
-            self.error.setText(f'There is already a channel called "{name}".')
-            return
         if any(c.number == self.number.value() for c in self.channels):
             self.error.setText(f"Channel {self.number.value()} is taken.")
             return
@@ -243,9 +240,55 @@ class NewChannelDialog(QDialog):
 
     def result_channel(self) -> model.Channel:
         t = model.TEMPLATES[self.group.checkedId()]
-        return model.Channel(number=self.number.value(), name=self.name.text().strip(),
+        name, k = f"Channel {self.number.value()}", 2          # placeholder until NameChannelDialog
+        while model.find(self.channels, name):
+            name, k = f"Channel {self.number.value()} ({k})", k + 1
+        return model.Channel(number=self.number.value(), name=name,
                              template=t.key, mode=t.mode, rotate_hours=t.rotate_hours,
                              kind=t.kind, start_mode=t.start_mode)
+
+
+class NameChannelDialog(QDialog):
+    """Last step of a new channel: its name, suggested from the first show or film added."""
+
+    def __init__(self, ch: model.Channel, channels: list[model.Channel], suggestion: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Name your channel")
+        self.setMinimumWidth(480)
+        self.ch, self.channels = ch, channels
+        base = suggestion or ch.name
+        self.suggestion, k = base, 2                 # never suggest a name that's already taken
+        while model.find(channels, self.suggestion) not in (None, ch):
+            self.suggestion, k = f"{base} {k}", k + 1
+        lay = QVBoxLayout(self)
+        lay.addWidget(h2(f"Channel {ch.number}: name"))
+        self.name = QLineEdit(self.suggestion)
+        self.name.setPlaceholderText(self.suggestion)
+        self.name.selectAll()                 # type to replace it, or just press Enter to keep it
+        lay.addWidget(self.name)
+        lay.addWidget(hint("Leave it as it is, or empty, to name it after the first show or film you added."))
+        self.error = QLabel("")
+        self.error.setObjectName("warn")
+        lay.addWidget(self.error)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        ok = button("Done", "primary")
+        ok.clicked.connect(self._accept)
+        row.addWidget(ok)
+        lay.addLayout(row)
+        enter_presses(self, ok)
+        self.name.setFocus()
+
+    def result_name(self) -> str:
+        return self.name.text().strip() or self.suggestion
+
+    def _accept(self):
+        name = self.result_name()
+        other = model.find(self.channels, name)
+        if other is not None and other is not self.ch:
+            self.error.setText(f'There is already a channel called "{name}". Pick another name.')
+            return
+        self.accept()
 
 
 # ------------------------------------------------------------------ library scan
@@ -394,10 +437,12 @@ class MoviePicker(QDialog):
         cancel.clicked.connect(self.reject)
         ok = button("Done" if editable else "Add selected", "primary")
         ok.clicked.connect(self.accept)
+        self._ok = ok
         row.addWidget(cancel)
         row.addWidget(ok)
         lay.addLayout(row)
         self._count()
+        enter_presses(self, self._ok)
 
     def _add_item(self, m: library.LibMovie, on_channel: bool = False, checked: bool = False, top: bool = False):
         bits = [m.label]
@@ -538,11 +583,13 @@ class ShowPicker(QDialog):
         cancel.clicked.connect(self.reject)
         ok = button("Add selected", "primary")
         ok.clicked.connect(self.accept)
+        self._ok = ok
         row.addWidget(cancel)
         row.addWidget(ok)
         lay.addLayout(row)
         self._count()
         self.search.setFocus()
+        enter_presses(self, self._ok)
 
     def _add_item(self, folder: str, title: str, detail: str, genres: list[str], on_channel=False,
                   checked=False, top=False, rating: str = ""):

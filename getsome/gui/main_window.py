@@ -305,9 +305,37 @@ class MainWindow(QMainWindow):
         self.editor.load(ch, self.channels)
         self.stack.setCurrentIndex(1)
         self.editor._add_shows()          # show or movie picker, depending on the style
+        self._name_new_channel(ch)
         if ch.has_content and QMessageBox.question(self, "Build now?", f"Build {ch.name} now so it goes on the air?") \
                 == QMessageBox.Yes:
             self._build([ch])
+
+    def _name_new_channel(self, ch: model.Channel) -> None:
+        """Last step of "+ New channel": the name, suggested from the first show or film added."""
+        from pathlib import Path
+
+        from .dialogs import NameChannelDialog
+
+        suggestion = ""
+        if ch.shows:
+            first = ch.shows[0]
+            suggestion = first.title or Path(first.folder).name
+        elif ch.movies:
+            from .. import library
+
+            m = library.lookup_movie(ch.movies[0])
+            suggestion = m.title if m else Path(ch.movies[0]).stem
+        dlg = NameChannelDialog(ch, self.channels, suggestion, self)
+        dlg.exec()                       # closing it keeps the suggestion
+        name = dlg.result_name() if dlg.result() == QDialog.Accepted else dlg.suggestion
+        if model.find(self.channels, name) not in (None, ch):
+            name = ch.name
+        if name != ch.name:
+            ch.name = name
+            model.save(self.channels)
+            self._refresh_list()
+            self.list.setCurrentRow(self.channels.index(ch))
+            self.editor.load(ch, self.channels)
 
     def _delete(self) -> None:
         ch = self._current()

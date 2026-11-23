@@ -147,6 +147,7 @@ def show_from_scan(sh: media_index.Show, root: str = "") -> LibShow:
 
 def scan(progress: Callable[[int, int, str], None] | None = None) -> list[LibShow]:
     shows: list[LibShow] = []
+    skipped: list[dict] = []
     todo: list[tuple[str, Path]] = []
     for root in folders():
         try:
@@ -163,12 +164,38 @@ def scan(progress: Callable[[int, int, str], None] | None = None) -> list[LibSho
             continue
         if sh.episodes:
             shows.append(show_from_scan(sh, root))
+        else:
+            skipped.append({"folder": str(folder), "why": media_index.why_no_episodes(folder)})
     if progress:
         progress(len(todo), len(todo), "")
     shows.sort(key=lambda s: s.title.lower())
     _cache().write_text(json.dumps({"version": CACHE_VERSION, "scanned_at": time.time(), "folders": folders(),
-                                    "shows": [asdict(s) for s in shows]}))
+                                    "shows": [asdict(s) for s in shows], "skipped": skipped}))
     return shows
+
+
+def skipped() -> list[dict]:
+    """Folders the last scan found no episodes in: [{folder, why}]."""
+    try:
+        return json.loads(_cache().read_text()).get("skipped", [])
+    except (OSError, ValueError):
+        return []
+
+
+def has_new_folders() -> bool:
+    """Show folders on disk that the last scan didn't see (added since): time to rescan."""
+    try:
+        data = json.loads(_cache().read_text())
+    except (OSError, ValueError):
+        return True
+    known = {s["folder"] for s in data.get("shows", [])} | {s["folder"] for s in data.get("skipped", [])}
+    for root in folders():
+        try:
+            if any(str(f) not in known for f in media_index.find_shows(Path(root))):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 _memo: tuple[float, list[str], list[LibShow]] | None = None

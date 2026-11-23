@@ -346,7 +346,7 @@ def ensure_library(parent) -> list[library.LibShow] | None:
             return None
         library.set_folders([d])
     shows = library.cached()
-    if shows is None:
+    if shows is None or library.has_new_folders():       # new show folders since the last scan
         dlg = ScanDialog(parent)
         if dlg.exec() != QDialog.Accepted:
             return None
@@ -527,6 +527,7 @@ class ShowPicker(QDialog):
         self.setWindowTitle("Add shows")
         self.resize(760, 720)
         self.all_shows = shows
+        self.already = already
         lay = QVBoxLayout(self)
         lay.addWidget(theme.ChromeLabel("ADD SHOWS", 24))
         row = QHBoxLayout()
@@ -552,14 +553,16 @@ class ShowPicker(QDialog):
         self.usage = library_usage()[0]
         self.list = QListWidget()
         self.list.setIconSize(QSize(*BADGE_SIZE))
-        for sh in shows:
-            self._add_item(sh.folder, sh.title, f"{sh.episodes} episodes · season {sh.season_text}",
-                           sh.genres, on_channel=sh.folder in already, rating=sh.rating)
+        self._fill(shows)
         self.list.itemClicked.connect(self._toggle)
         self.list.itemChanged.connect(lambda _it: self._count())
         lay.addWidget(self.list, 1)
         self.count = hint("")
         lay.addWidget(self.count)
+        self.skipped_note = hint("")
+        self.skipped_note.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        lay.addWidget(self.skipped_note)
+        self._show_skipped()
         lay.addWidget(hint("Not in the list? “Add any folder…” takes any folder of videos: home movies, "
                            "old tapes, a folder of commercials, or a whole folder of shows. No NFO files needed."))
 
@@ -633,11 +636,42 @@ class ShowPicker(QDialog):
         n = len(self.selected())
         self.count.setText(f"{n} selected" if n else "Tick shows, or filter by genre and use “Tick all shown”.")
 
+    def _fill(self, shows: list[library.LibShow], ticked: set[str] = frozenset()) -> None:
+        self.list.blockSignals(True)
+        self.list.clear()
+        for sh in shows:
+            self._add_item(sh.folder, sh.title, f"{sh.episodes} episodes · season {sh.season_text}",
+                           sh.genres, on_channel=sh.folder in self.already, checked=sh.folder in ticked,
+                           rating=sh.rating)
+        self.list.blockSignals(False)
+
+    def _show_skipped(self) -> None:
+        """Folders in the library that aren't listed, and why (so nothing just silently goes missing)."""
+        sk = library.skipped()
+        if not sk:
+            self.skipped_note.setText("")
+            return
+        shown = "; ".join(f"{Path(s['folder']).name} ({s['why']})" for s in sk[:6])
+        more = f"; and {len(sk) - 6} more" if len(sk) > 6 else ""
+        self.skipped_note.setText(f"Not listed: {shown}{more}.")
+
     def _rescan(self):
         dlg = ScanDialog(self)
-        if dlg.exec() == QDialog.Accepted:
-            QMessageBox.information(self, "Library rescanned",
-                                    f"Found {len(dlg.shows)} shows. Reopen “Add shows” to see them.")
+        if dlg.exec() != QDialog.Accepted:
+            return
+        before = len(self.all_shows)
+        ticked = set(self.selected())                     # keep what's ticked
+        self.all_shows = dlg.shows
+        self._fill(self.all_shows, ticked)
+        known = {self.genre.itemData(i) for i in range(self.genre.count())}
+        for g in sorted({g for sh in self.all_shows for g in sh.genres} - known):
+            self.genre.addItem(g, g)
+        self._filter()
+        self._count()
+        self._show_skipped()
+        new = len(self.all_shows) - before
+        self.count.setText(self.count.text() + (f"   ·   {new} new show{'s' if new != 1 else ''} found" if new > 0 else
+                                                "   ·   no new shows found"))
 
     def _browse(self):
         from .. import media_index

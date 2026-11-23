@@ -17,7 +17,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".m4v", ".mov", ".wmv", ".mpg", ".mpeg", ".ts", ".webm", ".flv", ".divx", ".ogv"}
+VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".m4v", ".mov", ".wmv", ".mpg", ".mpeg", ".ts", ".webm", ".flv", ".divx", ".ogv",
+              ".m2ts", ".mts", ".vob", ".3gp", ".rmvb", ".rm", ".asf", ".f4v", ".m2v", ".ogm", ".mpe", ".dv"}
 EXTRA_DIRS = {"extras", "extra", "featurettes", "trailers", "trailer", "behind the scenes", "deleted scenes",
               "interviews", "scenes", "shorts", "other", "others", "samples", "sample", ".actors", "backdrops"}
 EXTRA_SUFFIX = re.compile(r"[-_. ](trailer|sample|featurette|behindthescenes|deleted|interview|scene|short|other|extra)$", re.I)
@@ -179,8 +180,10 @@ def scan_show(folder: Path, include_specials: bool = False) -> Show:
             eps.append(_episode_info(p))
 
     specials = [e for e in eps if e.season == 0]
-    if not include_specials:
+    if not include_specials and any(e.season != 0 for e in eps):
         eps = [e for e in eps if e.season != 0]
+    elif not include_specials:
+        specials = []          # only "specials" (TMM often files unmatched documentaries as season 0): play them
     numbered = [e for e in eps if e.season is not None]
     unnumbered = [e for e in eps if e.season is None]
     numbered.sort(key=lambda e: (e.season, e.episode, _natural(str(e.path))))
@@ -206,16 +209,75 @@ def looks_like_show(folder: Path) -> bool:
 
 
 def find_shows(library: Path) -> list[Path]:
-    """Show folders directly under a library folder (or the folder itself if it is a show)."""
+    """Show folders under a library folder (or the folder itself if it is a show). A sub-folder that
+    isn't a show but holds several (e.g. "TV shows/Documentaries/…") is opened up into its shows."""
     library = Path(library)
     if looks_like_show(library):
         return [library]
-    return sorted((d for d in library.iterdir() if d.is_dir() and not d.name.startswith(".")),
-                  key=lambda d: _natural(d.name))
+    out = []
+    for d in library.iterdir():
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        inner = _category_shows(d)
+        out += inner if inner else [d]
+    return sorted(out, key=lambda d: _natural(d.name))
+
+
+def _has_videos(folder: Path, deep: bool = True) -> bool:
+    try:
+        if deep:
+            return any(Path(f).suffix.lower() in VIDEO_EXTS for _r, _d, fs in os.walk(folder) for f in fs)
+        return any(f.is_file() and f.suffix.lower() in VIDEO_EXTS for f in folder.iterdir())
+    except OSError:
+        return False
+
+
+def _category_shows(folder: Path) -> list[Path]:
+    """A category folder ("Documentaries", "Cartoons") holding several shows -> those shows, else []."""
+    if looks_like_show(folder) or _has_videos(folder, deep=False):
+        return []                      # a show (or a show whose episodes sit right in it)
+    try:
+        subs = [d for d in folder.iterdir() if d.is_dir() and not d.name.startswith(".")]
+    except OSError:
+        return []
+    shows = [d for d in subs if d.name.lower() not in EXTRA_DIRS and (looks_like_show(d) or _has_videos(d))]
+    return sorted(shows, key=lambda d: _natural(d.name)) if len(shows) >= 2 else []
+
+
+def why_no_episodes(folder: Path) -> str:
+    """A plain reason a folder has no playable episodes (for "not listed" notes)."""
+    vids, other = 0, 0
+    for root, dirs, files in os.walk(folder, followlinks=True):
+        dirs[:] = [x for x in dirs if not x.startswith(".")]
+        for f in files:
+            if f.startswith("."):
+                continue
+            if Path(f).suffix.lower() in VIDEO_EXTS:
+                vids += 1
+            elif Path(f).suffix.lower() not in (".nfo", ".jpg", ".jpeg", ".png", ".srt", ".ass", ".sub", ".idx",
+                                                ".txt", ".webp", ".tbn", ".xml"):
+                other += 1
+    if vids:
+        return "only extras or trailers"
+    if other:
+        return "no video files it can play (unusual file type?)"
+    return "no video files"
 
 
 def _safe(name: str) -> str:
     return re.sub(r"[/\x00]", "-", name).strip() or "Show"
+
+
+# FieldStation42 only catalogs these file types (media_processor.VIDEO_FORMATS). Other videos get a link
+# named with an accepted type: players and ffprobe read the real format from the contents, not the name.
+FS42_EXTS = {".mp4", ".mpg", ".mpeg", ".avi", ".mov", ".mkv", ".ts", ".m4v", ".webm", ".wmv"}
+_FS42_AS = {".vob": ".mpg", ".mpe": ".mpg", ".m2v": ".mpg", ".m2ts": ".ts", ".mts": ".ts"}
+
+
+def fs42_suffix(path: Path) -> str:
+    """The extension to give a link to this video so FieldStation42 accepts it."""
+    ext = Path(path).suffix.lower()
+    return ext if ext in FS42_EXTS else _FS42_AS.get(ext, ".mkv")
 
 
 def link_names(show: Show) -> list[tuple[str, Path]]:
@@ -234,9 +296,10 @@ def link_names(show: Show) -> list[tuple[str, Path]]:
             # after all numbered episodes, in folder order
             n_unnumbered += 1
             stem = f"{title} - S{'9' * sw}E{n_unnumbered:0{max(ew, 3)}d}"
-        name, k = stem + e.path.suffix.lower(), 2
+        ext = fs42_suffix(e.path)
+        name, k = stem + ext, 2
         while name in used:
-            name, k = f"{stem} ({k}){e.path.suffix.lower()}", k + 1
+            name, k = f"{stem} ({k}){ext}", k + 1
         used.add(name)
         out.append((name, e.path.resolve()))
     return out
@@ -332,9 +395,10 @@ def build_movie_links(movies: list[Movie], dest: Path, in_order: bool = False) -
         movies = sorted(movies, key=lambda m: (m.year or 9999, _natural(m.title)))
     for i, m in enumerate(movies):
         stem = (f"{i + 1:03d} " if in_order else "") + _safe(m.label)
-        name, k = stem + m.path.suffix.lower(), 2
+        ext = fs42_suffix(m.path)
+        name, k = stem + ext, 2
         while name in used:
-            name, k = f"{stem} [{k}]{m.path.suffix.lower()}", k + 1
+            name, k = f"{stem} [{k}]{ext}", k + 1
         used.add(name)
         (dest / name).symlink_to(Path(m.path).resolve())
     return len(movies)

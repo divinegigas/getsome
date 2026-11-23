@@ -294,6 +294,20 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**Library scan fixes (23 Nov, owner report: new shows, some without NFOs, not appearing after Rescan)**:
+- Show picker's Rescan now refreshes the open list in place (`ShowPicker._fill`), keeps ticks, says how many
+  new shows; it used to only say "reopen Add shows". `ensure_library` rescans by itself when
+  `library.has_new_folders()` (show folders on disk the last scan didn't see).
+- `media_index.find_shows` opens category folders ("TV shows/Documentaries/…": no videos at its top level,
+  not a show itself, ≥2 sub-folders with videos or show layout; `_category_shows`) into their shows.
+- `scan_show`: a show with only season-0 "specials" (TMM's half-matched documentaries) plays them.
+- More video types (`VIDEO_EXTS`: m2ts, mts, vob, 3gp, rmvb, rm, asf, f4v, m2v, ogm, mpe, dv). FS42 only
+  catalogs mp4/mpg/mpeg/avi/mov/mkv/ts/m4v/webm/wmv (media_processor.VIDEO_FORMATS), so links are named with
+  `media_index.fs42_suffix` (vob/mpe/m2v→.mpg, m2ts/mts→.ts, others→.mkv); players probe by content.
+  Also for own-commercial links.
+- Folders without episodes are recorded (`library.skipped()`, cache key "skipped" with a plain reason from
+  `why_no_episodes`) and listed under the picker as "Not listed: …".
+
 **Picture / zoom in the TV menu (23 Nov, owner request)**: MENU has a PICTURE row (`menu.ZOOMS`): Normal,
 Zoom (mpv `panscan=1`: a 16:9 picture boxed inside a 4:3 frame fills the screen), Cinema zoom (panscan 1 +
 `video-zoom=log2(2.35/1.78)`), Stretch (`keepaspect=no`), Force 4:3 / 16:9 (`video-aspect-override`).

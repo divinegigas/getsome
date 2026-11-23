@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import artwork, paths
+from . import artwork, media_index, paths
 
 _log = logging.getLogger("getsome.ads")
 ADS_VERSION = "5"            # bump to regenerate everyone's ad carrier clips (5: a third of the volume)
@@ -535,11 +535,11 @@ def link_pool(slug: str, number: int, shows: list[tuple[str, str, str]], own_fol
         if not folder or not Path(folder).is_dir():
             continue
         for f in sorted(Path(folder).rglob("*")):
-            if (f.is_file() and f.suffix.lower() in VIDEO_EXT and not f.name.startswith(".")
+            if (f.is_file() and f.suffix.lower() in media_index.VIDEO_EXTS and not f.name.startswith(".")
                     and str(f) not in seen):
                 seen.add(str(f))
                 n += 1
-                (d / f"own_{n:03d}{f.suffix.lower()}").symlink_to(f)
+                (d / f"own_{n:03d}{media_index.fs42_suffix(f)}").symlink_to(f)
     return d
 
 

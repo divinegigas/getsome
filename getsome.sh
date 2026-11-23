@@ -13,11 +13,20 @@ fail() {
   if [ ! -t 2 ] && need notify-send; then notify-send -a "Neon Cable 42" "Neon Cable 42 can't start" "$1"; fi
   exit 1
 }
+# Bazzite / Fedora Atomic (Silverblue, Kinoite …) install packages with rpm-ostree, then a restart
+atomic() { [ -e /run/ostree-booted ]; }
+how() {
+  if atomic; then
+    echo "On Bazzite / Fedora Atomic: rpm-ostree install $1   then restart the computer (if you already ran that, just restart)"
+  else
+    echo "On Fedora: sudo dnf install $1"
+  fi
+}
 if ! need ffmpeg || ! need ffprobe; then
-  fail "Neon Cable 42 needs ffmpeg. On Fedora: sudo dnf install ffmpeg-free  (or ffmpeg from RPM Fusion)"
+  fail "Neon Cable 42 needs ffmpeg. $(how ffmpeg-free)"
 fi
 if ! "$PY" -c "import ctypes.util, sys; sys.exit(0 if ctypes.util.find_library('mpv') else 1)"; then
-  fail "Neon Cable 42 needs libmpv. On Fedora: sudo dnf install mpv-libs"
+  fail "Neon Cable 42 needs libmpv. $(how mpv-libs)"
 fi
 if [ ! -f "$HERE/vendor/FieldStation42/station_42.py" ]; then
   git -C "$HERE" submodule update --init --recursive

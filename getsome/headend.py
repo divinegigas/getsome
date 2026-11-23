@@ -342,19 +342,55 @@ def _discovery(server: HeadEnd) -> None:
                 pass
 
 
+def _signature() -> str:
+    """Changes when the app is updated or the channels change (builds rewrite the FS42 confs, the
+    channel list or settings are edited). FS42 keeps its station list in memory and this process keeps
+    its code, so the service restarts itself when this changes."""
+    import subprocess
+
+    parts = []
+    try:
+        parts.append(subprocess.run(["git", "-C", str(paths.APP_DIR.parent), "rev-parse", "HEAD"],
+                                    capture_output=True, text=True, timeout=10).stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    confs = paths.fs42_work_dir() / "confs"
+    try:
+        parts += [f"{f.name}:{f.stat().st_mtime_ns}" for f in sorted(confs.glob("*.json"))]
+    except OSError:
+        pass
+    for f in (paths.data_dir() / "channels.json", paths.config_dir() / "settings.json"):
+        try:
+            parts.append(f"{f.name}:{f.stat().st_mtime_ns}")
+        except OSError:
+            pass
+    return "|".join(parts)
+
+
 def serve(port: int = PORT) -> None:
-    """`getsome serve`: run until stopped. Keeps the computer awake while a box is streaming, and
-    keeps schedules topped up (the setup window or TV mode may not be open on the head-end)."""
+    """`getsome serve`: run until stopped. Keeps the computer awake while a box is streaming, keeps
+    schedules topped up (the setup window or TV mode may not be open on the head-end), and restarts
+    itself when the app is updated or the channels change (so boxes always get the current line-up)."""
+    import sys
+
     from . import upkeep
 
     server = HeadEnd(port)
-    pidfile().write_text(str(os.getpid()))
+    server.restart = False
+    started_sig = _signature()
+    pidfile().write_text(f"{os.getpid()}\n{_code_version()}")
     threading.Thread(target=_discovery, args=(server,), name="discovery", daemon=True).start()
 
     def keeper():
         awake = None
         last_upkeep = 0.0
         while True:
+            time.sleep(15)
+            if _signature() != started_sig:
+                _log.info("channels or app changed: restarting the sharing service")
+                server.restart = True
+                server.shutdown()          # serve_forever returns in the main thread
+                return
             if time.monotonic() - last_upkeep > 3600:
                 last_upkeep = time.monotonic()
                 try:
@@ -373,14 +409,18 @@ def serve(port: int = PORT) -> None:
                     awake.stop()
             except Exception as e:
                 _log.debug("keep-awake: %s", e)
-            time.sleep(20)
 
     threading.Thread(target=keeper, name="headend-keeper", daemon=True).start()
     _log.info("sharing channels on port %d", port)
     try:
         server.serve_forever()
     finally:
-        pidfile().unlink(missing_ok=True)
+        server.server_close()
+        if not server.restart:
+            pidfile().unlink(missing_ok=True)
+    if server.restart:                     # same command, fresh process (new code, new line-up)
+        os.chdir(paths.APP_DIR.parent)
+        os.execv(sys.executable, [sys.executable, "-m", "getsome", "serve", "--port", str(port)])
 
 
 # ------------------------------------------------------------------ running it in the background
@@ -389,12 +429,49 @@ def pidfile() -> Path:
     return paths.data_dir() / "headend.pid"
 
 
+def _code_version() -> str:
+    import subprocess
+
+    try:
+        return subprocess.run(["git", "-C", str(paths.APP_DIR.parent), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def ensure_current() -> None:
+    """Setup window start: a sharing service still running older code (from before an update) is
+    restarted, so cable boxes get the current line-up and fixes."""
+    if not enabled() or not running():
+        return
+    try:
+        lines = pidfile().read_text().split()
+    except OSError:
+        return
+    if len(lines) < 2 or lines[1] != _code_version():
+        _log.info("restarting the sharing service (it was running older code)")
+        disable_process_only()
+        enable()
+
+
+def disable_process_only() -> None:
+    try:
+        os.kill(int(pidfile().read_text().split()[0]), 15)
+    except (OSError, ValueError, IndexError):
+        pass
+    for _ in range(30):                  # wait for the port to be free
+        if not running():
+            break
+        time.sleep(0.1)
+    pidfile().unlink(missing_ok=True)
+
+
 def running() -> bool:
     try:
-        pid = int(pidfile().read_text())
+        pid = int(pidfile().read_text().split()[0])
         os.kill(pid, 0)
         return Path(f"/proc/{pid}/cmdline").read_bytes().find(b"serve") >= 0
-    except (OSError, ValueError):
+    except (OSError, ValueError, IndexError):
         return False
 
 
@@ -420,11 +497,7 @@ def enable() -> None:
 
 def disable() -> None:
     _autostart_file().unlink(missing_ok=True)
-    try:
-        os.kill(int(pidfile().read_text()), 15)
-    except (OSError, ValueError):
-        pass
-    pidfile().unlink(missing_ok=True)
+    disable_process_only()
 
 
 def enabled() -> bool:

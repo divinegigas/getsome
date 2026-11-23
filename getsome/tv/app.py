@@ -70,13 +70,19 @@ class TVWindow(QMainWindow):
         self.hiss = Hiss(volume=float(self.settings["hiss_volume"]))
         self.keys = KeyMap()
 
-        self.channels = [c for c in fs42.channels()]
-        real = [c for c in self.channels if c.network_type == "standard"]
-        g = int(self.settings.get("guide_channel") or 0)
-        if g and real and all(c.number != g for c in self.channels):
-            self.channels.append(fs42.Channel(g, "TV Guide", GUIDE_TYPE))
-            self.channels.sort(key=lambda c: c.number)
+        self.channels, real = self._channel_list()
         self.guide_data = GuideData(real)
+        if self.cable_box:
+            # streaming from the head-end: read well ahead so Wi-Fi hiccups don't show
+            for k, v in (("cache", "yes"), ("demuxer-max-bytes", "300MiB"), ("demuxer-readahead-secs", 30),
+                         ("cache-secs", 30)):
+                try:
+                    self.video.player[k] = v
+                except Exception as e:
+                    _log.debug("cache option %s: %s", k, e)
+            # and follow the head-end's line-up while TV mode is open
+            self.lineup_timer = QTimer(self, interval=120_000, timeout=self._refresh_lineup)
+            self.lineup_timer.start()
         self.renderer.guide = GuideRenderer(self.guide_data)
         self.renderer.guide.preview_enabled = bool(self.settings.get("guide_preview", True))
         self.renderer.guide.preview_image = lambda: self.video.preview_image
@@ -1011,6 +1017,41 @@ class TVWindow(QMainWindow):
         elif action == "fullscreen":
             self.showNormal() if self.isFullScreen() else self.showFullScreen()
         return True
+
+    # ------------------------------------------------------------------ line-up
+    def _channel_list(self):
+        chans = [c for c in fs42.channels()]
+        real = [c for c in chans if c.network_type == "standard"]
+        g = int(self.settings.get("guide_channel") or 0)
+        if g and real and all(c.number != g for c in chans):
+            chans.append(fs42.Channel(g, "TV Guide", GUIDE_TYPE))
+            chans.sort(key=lambda c: c.number)
+        return chans, real
+
+    def _refresh_lineup(self) -> None:
+        """Cable box: the head-end's channels changed (built, renamed, deleted): take the new line-up,
+        staying on the same channel number when it still exists."""
+        from .. import cablebox, model
+
+        if not cablebox.refresh():
+            return
+        self.settings.update(cablebox.shared_settings())
+        cur = self.channels[self.index].number if self.channels else None
+        self.channels, real = self._channel_list()
+        self.guide_data.channels = real
+        self.restricted = {c.number: c for c in model.load() if c.restricted}
+        _log.info("head-end line-up changed: %d channels", len(self.channels))
+        if not self.channels:
+            return
+        nums = [c.number for c in self.channels]
+        self.prev_index = None
+        self.index = nums.index(cur) if cur in nums else 0
+        self.state.banner_info = {"header": "CHANNEL LINE-UP UPDATED"}
+        self.state.banner_fade.show(3.0)
+        if cur not in nums:
+            self.tune(self.index)           # the channel we were on is gone
+        else:
+            self._load_now(self.token)      # same channel: pick up its new schedule
 
     # ------------------------------------------------------------------ restricted channels
     # strong enough to hide details and text, light enough to tell roughly what's on

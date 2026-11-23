@@ -262,6 +262,22 @@ def install() -> bool:
     return True
 
 
+def refresh() -> bool:
+    """Ask the head-end for its current line-up again. True if the channels (or what's restricted,
+    the guide channel, the PIN) changed since we last asked."""
+    global _info
+    if not active():
+        return False
+    try:
+        new = call("info", timeout=8)
+    except Unreachable:
+        return False
+    keys = ("channels", "restricted", "guide_channel", "restricted_pin", "relock_minutes")
+    changed = any(new.get(k) != _info.get(k) for k in keys)
+    _info = new
+    return changed
+
+
 def shared_settings() -> dict:
     """The head-end's settings that decide what the box shows."""
     keys = ("guide_channel", "restricted_pin", "relock_minutes")

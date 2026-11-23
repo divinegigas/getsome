@@ -548,6 +548,14 @@ def run_setup() -> int:
     win = MainWindow()
     win.show()
     _steam_art_later()
+    try:
+        from .. import headend
+
+        headend.ensure_current()            # a sharing service from before an update gets restarted
+    except Exception as e:
+        import logging
+
+        logging.getLogger("getsome.headend").warning("couldn't check the sharing service: %s", e)
     return app.exec()
 
 

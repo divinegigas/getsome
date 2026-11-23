@@ -294,6 +294,20 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**Cable box showed the old line-up and buffered a lot (23 Nov, owner report)**: the head-end service
+(`getsome serve`, started once at login) never reloaded: FS42's StationManager keeps the station list in
+memory and the process kept its old code, so after the owner rebuilt everything it served the old channels,
+whose catalog links were gone (the box retried and buffered). Fixes:
+- `headend.serve` keeper checks `_signature()` (git HEAD, FS42 confs + mtimes, channels.json, settings.json)
+  every 15 s; on change it shuts the server down and `execv`s itself (same pid, fresh FS42 state, new code).
+- pidfile now "pid\nHEAD"; `headend.ensure_current()` (setup window start) restarts a service that runs older
+  code (or has an old-style pidfile), so the update reaches services started before this fix.
+- Box: `cablebox.refresh()` + `TVWindow._refresh_lineup` every 2 min (new channel list, restricted set, guide
+  channel/PIN; stays on the same channel number, re-tunes if it's gone; banner "CHANNEL LINE-UP UPDATED").
+  mpv network buffering on the box: cache=yes, demuxer-max-bytes 300MiB, readahead/cache-secs 30.
+Tested in the sandbox: removing a channel and building a new one on the head-end restarted the service by
+itself within ~15 s and the box's line-up followed.
+
 **Commercials inside episodes (23 Nov)**: owner: scanning by default takes hours on a library, so the
 **default is typical positions**: `breaks.typical(duration)` (<8 min none; <16 min middle; <35 min 12/52/88 %
 = cold open | act 1 | act 2 | tag; <56 min 9/28/48/68/87 % = teaser + acts; longer every ~15 min), instant.

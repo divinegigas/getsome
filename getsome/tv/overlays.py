@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QImage, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QFont, QFontDatabase, QImage, QLinearGradient, QPainter, QPainterPath, QPen
+from ..brand import QColor
 
 from .. import paths
 
@@ -25,7 +26,9 @@ _fonts: dict[str, str] = {}
 
 
 def load_fonts() -> None:
-    for key, file in (("numbers", "Monoton-Regular.ttf"), ("text", "TiltNeon.ttf")):
+    from .. import brand
+
+    for key, file in brand.FONTS.items():
         fid = QFontDatabase.addApplicationFont(str(paths.FONTS_DIR / file))
         fams = QFontDatabase.applicationFontFamilies(fid) if fid >= 0 else []
         _fonts[key] = fams[0] if fams else "Sans Serif"
@@ -34,7 +37,15 @@ def load_fonts() -> None:
 def font(kind: str, px: int) -> QFont:
     f = QFont(_fonts.get(kind, "Sans Serif"))
     f.setPixelSize(max(1, px))
+    if _LINING:
+        try:                       # Playfair (XCable) defaults to old-style numbers: S01E02 read "SoIEo2"
+            f.setFeature(QFont.Tag("lnum"), 1)
+        except Exception:
+            pass
     return f
+
+
+_LINING = paths.XCABLE and hasattr(QFont, "setFeature")
 
 
 # --------------------------------------------------------------------------- neon text

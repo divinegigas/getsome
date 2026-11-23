@@ -41,7 +41,8 @@ def installed() -> bool:
 def make_icon(dest: Path, size: int = 256) -> None:
     """A neon TV set with '42' on the screen, drawn in code (no downloaded art)."""
     from PySide6.QtCore import QPointF, QRectF, Qt
-    from PySide6.QtGui import QColor, QFont, QGuiApplication, QImage, QLinearGradient, QPainter, QPen
+    from PySide6.QtGui import QFont, QGuiApplication, QImage, QLinearGradient, QPainter, QPen
+    from .brand import QColor
 
     if QGuiApplication.instance() is None:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

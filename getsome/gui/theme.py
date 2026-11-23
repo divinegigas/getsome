@@ -4,7 +4,8 @@ magenta/cyan neon trim and chrome headings. All drawn in code."""
 from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
+from PySide6.QtGui import QFont, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
+from ..brand import QColor
 from PySide6.QtWidgets import QGraphicsDropShadowEffect, QLabel, QWidget
 
 from ..tv import overlays
@@ -81,6 +82,10 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QSlider::groove:horizontal {{ height: 4px; background: #3a2a7a; }}
 QSlider::handle:horizontal {{ background: {PINK}; width: 14px; margin: -6px 0; border-radius: 7px; }}
 """
+from ..brand import restyle  # noqa: E402
+
+STYLE = restyle(STYLE)       # XCable: the same sheet in black & gold
+
 
 
 def glow(widget: QWidget, color: str = PINK, radius: int = 18) -> None:

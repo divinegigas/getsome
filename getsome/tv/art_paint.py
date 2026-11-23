@@ -14,7 +14,8 @@ from __future__ import annotations
 import zlib
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFontMetricsF, QLinearGradient, QPainter, QPen
+from PySide6.QtGui import QFontMetricsF, QLinearGradient, QPainter, QPen
+from ..brand import QColor
 
 from .. import paths  # noqa: E402
 from .ads_paint import _ease, _fit, _image, _text

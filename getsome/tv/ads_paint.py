@@ -11,8 +11,8 @@ import math
 import random
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import (QColor, QFontMetricsF, QImage, QLinearGradient, QPainter, QPainterPath, QPen,
-                           QPolygonF, QRadialGradient)
+from PySide6.QtGui import (QFontMetricsF, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPolygonF, QRadialGradient)
+from ..brand import QColor
 
 from .. import paths  # noqa: E402
 from .overlays import CYAN, PINK, YELLOW, _chrome_text, draw_neon, font

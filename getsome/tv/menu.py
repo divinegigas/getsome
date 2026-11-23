@@ -10,7 +10,8 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFontMetricsF, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QFontMetricsF, QLinearGradient, QPainter, QPainterPath, QPen
+from ..brand import QColor
 
 from .overlays import CYAN, PINK, YELLOW, _chrome_text, font
 

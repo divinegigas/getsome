@@ -37,7 +37,8 @@ def _tv_icon(size: int):
 def _scene(p, w: int, h: int, horizon: float = 0.62, sun_x: float = 0.5, sun_r: float = 0.22) -> None:
     """Sky, striped sun and a perspective neon grid."""
     from PySide6.QtCore import QPointF, QRectF, Qt
-    from PySide6.QtGui import QColor, QLinearGradient, QPainterPath, QPen, QRadialGradient
+    from PySide6.QtGui import QLinearGradient, QPainterPath, QPen, QRadialGradient
+    from .brand import QColor
 
     hy = h * horizon
     sky = QLinearGradient(0, 0, 0, hy)

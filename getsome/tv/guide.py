@@ -13,7 +13,8 @@ import threading
 import time
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFontMetricsF, QImage, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QFontMetricsF, QImage, QLinearGradient, QPainter, QPainterPath, QPen
+from ..brand import QColor
 
 from .. import paths  # noqa: E402
 from .. import fs42

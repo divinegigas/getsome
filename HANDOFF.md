@@ -294,6 +294,17 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**Sharing service robustness (23 Nov, owner report: after the last updates the PCs can't see each other)**:
+not reproduced in the sandbox (real path via getsome.sh + venv: enable → ensure_current → self-restart all
+answer on 4242). Hardening: `serve` logs to `logs/headend.log` (rotating; `enable()` also sends the
+process's stdout/stderr there, so start-up crashes are kept; no duplicate lines); binding the port retries
+for 10 s (a copy being replaced may still hold it: before, the new copy died silently and nothing was
+shared); restarts are counted through execv (`GETSOME_HEADEND_RESTARTS`), >3 in 2 min → stay up without
+auto-restart; the service's own hourly upkeep refreshes the signature so it can't restart itself in a
+loop. Settings → Home network shows "Sharing is ticked, but the sharing service isn't running" with the
+last logged problem (`headend.last_error`) and a "Start sharing again" button. **Waiting on the owner's
+headend.log if it still fails.**
+
 **Blurred sides for 4:3 (23 Nov, owner request)**: TV MENU row SIDES: Black bars / Blurred picture
 (`settings.side_fill`, one global choice). `TVWindow._apply_sides` (after `_apply_zoom` on every playback
 restart and on menu changes) builds `_sides_filter()` only for features (`_zoom_key()`), in Normal / Force 4:3 /

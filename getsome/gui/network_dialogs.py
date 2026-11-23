@@ -32,13 +32,23 @@ def add_network_section(dlg, lay) -> None:
     row.addWidget(forget_btn)
     lay.addLayout(row)
 
+    restart_btn = button("Start sharing again")
+    restart_btn.clicked.connect(lambda: (headend.disable_process_only(), headend.enable(),
+                                         status.setText("Starting…"), QTimer.singleShot(4000, refresh_share)))
+    row.addWidget(restart_btn)
+
     def refresh_share():
         on = headend.enabled()
         n = len(headend.paired_boxes())
-        if on:
+        up = headend.running()
+        restart_btn.setVisible(on and not up)
+        if on and not up:
+            err = headend.last_error()
+            status.setText("Sharing is ticked, but the sharing service isn't running."
+                           + (f" Last problem: {err}" if err else "") + " Press “Start sharing again”.")
+        elif on:
             where = ", ".join(headend.addresses()) or "this computer"
-            status.setText(f"Sharing from {where}. {n} cable box{'es' if n != 1 else ''} paired."
-                           + ("" if headend.running() else "  (starting…)"))
+            status.setText(f"Sharing from {where}. {n} cable box{'es' if n != 1 else ''} paired.")
         else:
             status.setText("Not sharing. Tick the box to let another computer in the house watch these channels "
                            "without a library of its own.")

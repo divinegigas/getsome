@@ -372,21 +372,54 @@ def serve(port: int = PORT) -> None:
     schedules topped up (the setup window or TV mode may not be open on the head-end), and restarts
     itself when the app is updated or the channels change (so boxes always get the current line-up)."""
     import sys
+    from logging.handlers import RotatingFileHandler
 
     from . import upkeep
 
-    server = HeadEnd(port)
+    # a log the owner (or the next session) can read: the service has no terminal
+    try:
+        log_file().parent.mkdir(parents=True, exist_ok=True)
+        fh = RotatingFileHandler(log_file(), maxBytes=1_000_000, backupCount=1)
+        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        root = logging.getLogger()
+        if not sys.stderr.isatty():               # stderr already goes to this file (enable())
+            for h in list(root.handlers):
+                if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler):
+                    root.removeHandler(h)
+        root.addHandler(fh)
+        logging.getLogger().setLevel(logging.INFO)
+    except OSError:
+        pass
+    # restarts in the last 2 minutes (passed on through execv): more than 3 means something keeps
+    # changing; then stay up instead of restarting again
+    now = time.time()
+    recent = [float(t) for t in os.environ.get("GETSOME_HEADEND_RESTARTS", "").split(",") if t]
+    recent = [t for t in recent if now - t < 120]
+    auto_restart = len(recent) < 3
+    if not auto_restart:
+        _log.warning("restarted %d times in 2 minutes: not restarting automatically for now", len(recent))
+    server = None
+    for attempt in range(20):                     # a copy being replaced may still hold the port briefly
+        try:
+            server = HeadEnd(port)
+            break
+        except OSError as e:
+            if attempt == 19:
+                _log.error("can't share on port %d: %s (is another copy already sharing?)", port, e)
+                raise
+            time.sleep(0.5)
     server.restart = False
     started_sig = _signature()
     pidfile().write_text(f"{os.getpid()}\n{_code_version()}")
     threading.Thread(target=_discovery, args=(server,), name="discovery", daemon=True).start()
 
     def keeper():
+        nonlocal started_sig
         awake = None
         last_upkeep = 0.0
         while True:
             time.sleep(15)
-            if _signature() != started_sig:
+            if auto_restart and _signature() != started_sig:
                 _log.info("channels or app changed: restarting the sharing service")
                 server.restart = True
                 server.shutdown()          # serve_forever returns in the main thread
@@ -397,6 +430,7 @@ def serve(port: int = PORT) -> None:
                     upkeep.run()
                 except Exception as e:
                     _log.warning("upkeep failed: %s", e)
+                started_sig = _signature()     # our own top-ups don't count as "the channels changed"
             try:
                 if server.busy():
                     if awake is None:
@@ -420,7 +454,24 @@ def serve(port: int = PORT) -> None:
             pidfile().unlink(missing_ok=True)
     if server.restart:                     # same command, fresh process (new code, new line-up)
         os.chdir(paths.APP_DIR.parent)
+        os.environ["GETSOME_HEADEND_RESTARTS"] = ",".join(str(t) for t in recent + [now])
         os.execv(sys.executable, [sys.executable, "-m", "getsome", "serve", "--port", str(port)])
+
+
+def log_file() -> Path:
+    return paths.data_dir() / "logs" / "headend.log"
+
+
+def last_error() -> str:
+    """The last warning or error the sharing service logged (for Settings)."""
+    try:
+        lines = log_file().read_text(errors="replace").splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines[-200:]):
+        if " ERROR " in line or " WARNING " in line or "Traceback" in line or "Error:" in line:
+            return line.split(": ", 1)[-1][:200]
+    return ""
 
 
 # ------------------------------------------------------------------ running it in the background
@@ -491,8 +542,11 @@ def enable() -> None:
     f.write_text(f"[Desktop Entry]\nType=Application\nName={paths.APP_NAME} head-end\n"
                  f'Exec="{desktop.launcher()}" serve\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n')
     if not running():
+        log_file().parent.mkdir(parents=True, exist_ok=True)
+        out = open(log_file(), "a")           # start-up failures (before logging starts) land here too
         subprocess.Popen(["/bin/bash", str(desktop.launcher()), "serve"], cwd=str(paths.APP_DIR.parent),
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                         stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        out.close()
 
 
 def disable() -> None:

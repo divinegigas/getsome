@@ -294,6 +294,21 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**Act breaks: commercials inside episodes (23 Nov, owner report: 22-min shows in half-hour slots played the
+whole episode, then 7-8 min of ads)**: FS42 only splits a file at chapter markers or stored break points;
+without them we write an end-only marker (all ads at the end). New `breaks.py`: `silences()` (ffmpeg
+silencedetect on audio only, fast) → up to 14 longest silences between 1 min from the start and 1 min
+from the end → `dark_near()` (3 s of video at 96 px, blackdetect) → act breaks = silent *and* dark, ≥90 s
+apart. Cached per file in `breaks_cache.json` (size+mtime). `fs42.set_break_points` stores them in FS42's
+break_points table in its own segment format (calc_black_segments) and drops our end-only chapter.
+`builder._find_breaks` runs it for every file without chapters/breaks on channels with commercials (the
+old slow full-decode FS42 `-b` scan and the "also at fades to black" checkbox are gone;
+`Channel.black_detect` is unused). Tested: a 7.5-min episode with two act breaks plus a silent-not-dark and
+a dark-not-silent decoy → exactly the two breaks in 3.5 s; a half-hour slot then plays part 1, ads,
+part 2, ads, part 3 ending at :59. `ads.POOL_VERSION` 3 so commercial channels ask for one rebuild.
+Channel editor: "Add my own ads folder" removed (Settings → Commercial folders); channels that already
+have an `ad_folder` keep it and get a "Stop using … on this channel" button.
+
 **Library scan fixes (23 Nov, owner report: new shows, some without NFOs, not appearing after Rescan)**:
 - Show picker's Rescan now refreshes the open list in place (`ShowPicker._fill`), keeps ticks, says how many
   new shows; it used to only say "reopen Add shows". `ensure_library` rescans by itself when

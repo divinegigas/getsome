@@ -414,6 +414,29 @@ def mark_end_only(realpath: str, duration: float) -> None:
         con.close()
 
 
+def set_break_points(realpath: str, times: list[float], duration: float) -> None:
+    """Store act breaks (seconds) as FS42 break points, in the segment format its own fade-to-black
+    scan writes (MediaProcessor.black_detect), and drop our end-only marker so FS42 uses them."""
+    init()
+    from fs42.fluid_statements import FluidStatements
+    from fs42.media_processor import MediaProcessor
+
+    segs, prev = [], 0.0
+    for t in sorted(times):
+        segs.append({"chapter_start": prev, "chapter_end": float(t)})
+        prev = float(t)
+    segs.append({"chapter_start": prev, "chapter_end": float(duration)})
+    segs = MediaProcessor.calc_black_segments(segs, float(duration))
+    con = _fluid_db()
+    try:
+        ch = FluidStatements.get_chapter_points(con, realpath)
+        if ch and any(isinstance(c, dict) and c.get(END_ONLY) for c in ch):
+            FluidStatements.delete_chapter_points(con, realpath)
+        FluidStatements.add_break_points(con, realpath, segs)
+    finally:
+        con.close()
+
+
 def clear_end_only(realpaths: list[str]) -> None:
     """Forget our END_ONLY markers (before a fade-to-black scan, which FS42 only uses
     when a file has no chapters)."""

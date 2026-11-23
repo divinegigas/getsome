@@ -24,7 +24,7 @@ _log = logging.getLogger("getsome.ads")
 ADS_VERSION = "5"            # bump to regenerate everyone's ad carrier clips (5: a third of the volume)
 # bump when the cards in a channel's pool change (new kinds, trivia wording): channels with
 # commercial breaks then show "needs build" (channel_writer.channel_hash)
-POOL_VERSION = "2"
+POOL_VERSION = "3"          # 3: act breaks (breaks.py) need one rebuild
 AD_VOLUME = 0.33            # generated ads, cards, IDs and stings sit well under the shows
 PROMO_SECONDS = 20
 VIDEO_EXT = (".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".mpg", ".mpeg", ".ts", ".wmv", ".flv")

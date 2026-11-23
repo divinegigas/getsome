@@ -224,18 +224,16 @@ class ChannelEditor(QFrame):
 
         adrow = QHBoxLayout()
         self.ads = QCheckBox("Commercial breaks")
-        self.ads.setToolTip("Breaks after each show, and inside episodes only where the file has chapter markers\n"
-                            "(or a fade to black, if you tick that too). Never at random moments.\n"
-                            "Ads are original fake 90s products plus promos for this channel's shows.")
+        self.ads.setToolTip("Breaks inside episodes where the show fades to black with a pause (its act breaks)\n"
+                            "or at chapter markers, and after each show. Never at random moments.\n"
+                            "Show cards, trivia and your own commercials (Settings → Commercial folders).")
         self.ads.toggled.connect(self._ads_changed)
         adrow.addWidget(self.ads)
-        self.black = QCheckBox("also at fades to black (slow first build)")
-        self.black.setToolTip("Scans every episode for black frames once. Takes a long time on a big library;\n"
-                              "results are remembered, so later builds are quick.")
-        self.black.toggled.connect(self._black_changed)
-        adrow.addWidget(self.black)
+        self.ads_note = QLabel("Your own commercials: Settings → Commercial folders")
+        self.ads_note.setObjectName("dim")
+        adrow.addWidget(self.ads_note)
+        # older channels may have their own ads folder: they keep it, and can stop using it here
         self.own_ads = button("", "picker")
-        self.own_ads.setToolTip("Add a folder of your own commercial clips to this channel's ad pool")
         self.own_ads.clicked.connect(self._pick_own_ads)
         adrow.addWidget(self.own_ads)
         adrow.addStretch(1)
@@ -301,7 +299,6 @@ class ChannelEditor(QFrame):
         keys_ = [k for k, _ in model.START_MODES]
         self.start_mode.setCurrentIndex(keys_.index(ch.start_mode) if ch.start_mode in keys_ else 0)
         self.ads.setChecked(ch.commercials)
-        self.black.setChecked(ch.black_detect)
         self.restricted.setChecked(ch.restricted)
         self.lock_mode.setCurrentIndex(1 if ch.lock_mode == "hours" else 0)
         self.free_from.setCurrentIndex(max(0, self.free_from.findData(ch.free_from)))
@@ -315,9 +312,9 @@ class ChannelEditor(QFrame):
     def _update_ads_ui(self) -> None:
         ch = self.ch
         self.ads_widget.setVisible(ch.kind != model.MOVIES)
-        self.black.setEnabled(ch.commercials)
-        self.own_ads.setEnabled(ch.commercials)
-        self.own_ads.setText(f"▸  My ads: {Path(ch.ad_folder).name}" if ch.ad_folder else "▸  Add my own ads folder…")
+        self.ads_note.setVisible(ch.commercials)
+        self.own_ads.setVisible(bool(ch.ad_folder))
+        self.own_ads.setText(f"Stop using “{Path(ch.ad_folder).name}” on this channel" if ch.ad_folder else "")
 
     def _ads_changed(self, on: bool) -> None:
         if self._loading or self.ch is None:
@@ -326,31 +323,15 @@ class ChannelEditor(QFrame):
         self._update_ads_ui()
         self._commit()
 
-    def _black_changed(self, on: bool) -> None:
-        if self._loading or self.ch is None:
-            return
-        self.ch.black_detect = on
-        self._commit()
-
     def _pick_own_ads(self) -> None:
+        """Older channels' own ads folder: stop using it (Settings → Commercial folders replaces it)."""
         from PySide6.QtWidgets import QMessageBox
 
-        from .dialogs import choose_folder
-
-        if self.ch.ad_folder:
-            r = QMessageBox.question(self, "Your ads folder",
-                                     f"This channel also plays ads from:\n{self.ch.ad_folder}\n\nChoose a different folder?\n"
-                                     "(No = stop using it)", QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
-            if r == QMessageBox.Cancel:
-                return
-            if r == QMessageBox.No:
-                self.ch.ad_folder = ""
-                self._update_ads_ui()
-                self._commit()
-                return
-        d = choose_folder(self, "Folder of your own commercials", self.ch.ad_folder)
-        if d:
-            self.ch.ad_folder = d
+        if self.ch.ad_folder and QMessageBox.question(
+                self, "This channel's ads folder",
+                f"This channel also plays ads from:\n{self.ch.ad_folder}\n\nStop using it on this channel? "
+                "(Add it in Settings → Commercial folders to use it on every channel.)") == QMessageBox.Yes:
+            self.ch.ad_folder = ""
             self._update_ads_ui()
             self._commit()
 

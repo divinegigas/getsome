@@ -3,6 +3,8 @@ computer's channels (cable box). See headend.py and cablebox.py."""
 
 from __future__ import annotations
 
+import json
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QMessageBox, QVBoxLayout)
@@ -193,3 +195,102 @@ class ConnectDialog(QDialog):
         QMessageBox.information(self, "Connected", f"This computer is now a cable box for {conf['name']}. "
                                 "Press Watch TV to see its channels.")
         self.accept()
+
+
+# ------------------------------------------------------------------ Settings → Remote control
+
+def add_remote_section(dlg, lay) -> None:
+    import os
+
+    from .. import remote_helper
+
+    lay.addWidget(h2("Remote control"))
+    row = QHBoxLayout()
+    label = QLabel("")
+    label.setObjectName("dim")
+    label.setWordWrap(True)
+    row.addWidget(label, 1)
+    fix = button("Fix the OK button…")
+    undo = button("Remove the fix")
+    row.addWidget(fix)
+    row.addWidget(undo)
+    lay.addLayout(row)
+
+    def refresh():
+        on = os.path.exists(remote_helper.RULE)
+        label.setText("The remote's OK button is set to work as Enter everywhere, including Steam Game Mode."
+                      if on else "Does your remote's OK button do nothing in Steam Game Mode (or in the "
+                      "compatibility window)? This makes it work there. Needs your password once.")
+        undo.setVisible(on)
+
+    fix.clicked.connect(lambda: (RemoteFixDialog("install", dlg).exec(), refresh()))
+    undo.clicked.connect(lambda: (RemoteFixDialog("remove", dlg).exec(), refresh()))
+    refresh()
+
+
+class RemoteFixDialog(QDialog):
+    """Runs remote_helper.py as root through pkexec and shows what it says."""
+
+    def __init__(self, what: str, parent=None):
+        import shutil
+        import sys
+        from pathlib import Path
+
+        from PySide6.QtCore import QProcess
+
+        super().__init__(parent)
+        self.setWindowTitle("Remote control")
+        self.setMinimumWidth(460)
+        lay = QVBoxLayout(self)
+        lay.addWidget(h2("Fix the OK button" if what == "install" else "Remove the fix"))
+        self.msg = QLabel("Enter your password when asked…")
+        self.msg.setWordWrap(True)
+        f = self.msg.font()
+        f.setPointSize(f.pointSize() + 3)
+        self.msg.setFont(f)
+        lay.addWidget(self.msg)
+        self.close_btn = button("Close")
+        self.close_btn.clicked.connect(self.accept)
+        lay.addWidget(self.close_btn, 0, Qt.AlignRight)
+        helper = Path(__file__).resolve().parent.parent / "remote_helper.py"
+        py = "/usr/bin/python3" if Path("/usr/bin/python3").exists() else sys.executable
+        if not shutil.which("pkexec"):
+            self.msg.setText("This needs “pkexec” (polkit), which isn't installed on this computer.")
+            return
+        self.proc = QProcess(self)
+        self.proc.readyReadStandardOutput.connect(self._read)
+        self.proc.finished.connect(self._finished)
+        self._done = False
+        self.proc.start("pkexec", [py, "-I", str(helper), what] + (["25"] if what == "install" else []))
+
+    def _read(self):
+        for line in bytes(self.proc.readAllStandardOutput()).decode(errors="replace").splitlines():
+            try:
+                st = json.loads(line)
+            except ValueError:
+                continue
+            s = st.get("status")
+            if s == "listening":
+                self.msg.setText("Now press OK on the remote (once is enough)…")
+            elif s == "noscan":
+                self.msg.setText("Got the button, but this remote's receiver doesn't tell Linux which button it "
+                                 "was, so it can't be remapped this way. Sorry: use Enter on the keyboard side.")
+            elif s == "done":
+                self._done = True
+                self.msg.setText(f"Done: OK on “{st.get('name')}” now works as Enter. If TV mode is open, close "
+                                 "and reopen it.")
+            elif s == "removed":
+                self._done = True
+                self.msg.setText("The fix is removed; the OK button is back to normal.")
+            elif s in ("nothing", "error"):
+                self.msg.setText(st.get("message", "That didn't work."))
+
+    def _finished(self, code, _status):
+        if not self._done and code in (126, 127):
+            self.msg.setText("Cancelled (no password given). Nothing was changed.")
+
+    def done(self, r):
+        p = getattr(self, "proc", None)
+        if p is not None and p.state() != p.NotRunning:
+            p.kill()
+        super().done(r)

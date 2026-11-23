@@ -294,6 +294,16 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**Remote OK button in Game Mode (23 Nov)**: on the cable box (Bazzite deck edition, Game Mode) OK did nothing:
+gamescope runs apps under XWayland and X11 can't receive key codes above 255 (KEY_OK 352 / KEY_SELECT 353).
+Fix: Settings → Remote control → "Fix the OK button…" runs `remote_helper.py install` as root via
+`pkexec /usr/bin/python3 -I` (stdlib only). It listens (≤25 s) on keyboard-like `/dev/input/event*`
+(from `/proc/bus/input/devices`) for KEY_OK/KEY_SELECT preceded by MSC_SCAN, writes
+`/etc/udev/hwdb.d/70-neon-cable-42-remote.hwdb` (`evdev:input:b<bus>v<vendor>p<product>*` +
+`KEYBOARD_KEY_<scan>=enter`, one block per remote), then `systemd-hwdb update` + `udevadm trigger`.
+"Remove the fix" deletes it. Nothing typed is stored. Receivers that don't report scancodes can't be
+remapped this way (the dialog says so). Tested with a fake event device; untested on the real remote.
+
 **Remove all channels (22 Nov)**: Settings → Maintenance → "Remove all channels…" (danger button; closes
 Settings, then `MainWindow.remove_all`). Refuses while TV mode runs; confirmation box with Cancel as default
 and a "Remove all channels" button. `cleanup.remove_all` removes every channel via `builder.remove_channel`

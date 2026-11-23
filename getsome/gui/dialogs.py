@@ -949,9 +949,10 @@ class SettingsDialog(QDialog):
 
         from .. import updater
 
-        from .network_dialogs import add_network_section
+        from .network_dialogs import add_network_section, add_remote_section
 
         add_network_section(self, lay)
+        add_remote_section(self, lay)
 
         lay.addWidget(h2("Updates"))
         row = QHBoxLayout()

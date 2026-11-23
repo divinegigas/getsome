@@ -440,6 +440,21 @@ class MainWindow(QMainWindow):
     def _watch(self) -> None:
         if self.tv_proc and self.tv_proc.poll() is None:
             return
+        from .. import cablebox
+
+        box = cablebox.config()
+        if box:
+            # a cable box has no channels of its own: TV mode watches the head-end's
+            try:
+                cablebox.hello(box["host"], box.get("port", 4242))
+            except cablebox.Unreachable:
+                QMessageBox.warning(self, "Can't reach the head-end",
+                                    f"This computer is a cable box for {box.get('name')} ({box['host']}), but that "
+                                    "computer isn't answering.\n\nMake sure it's switched on, on the same network, and "
+                                    "that Settings → Home network → “Share my channels” is ticked there.")
+                return
+            self._start_tv()
+            return
         pending = [c for c in self.channels if self._state(c)[0] in ("not built", "needs build")]
         if pending:
             names = ", ".join(c.name for c in pending)
@@ -453,6 +468,9 @@ class MainWindow(QMainWindow):
         if not any(c.built_hash for c in self.channels):
             QMessageBox.information(self, "Nothing on the air", "Build a channel first.")
             return
+        self._start_tv()
+
+    def _start_tv(self) -> None:
         env = dict(os.environ, GETSOME_FROM_SETUP="1")
         self.tv_proc = subprocess.Popen([sys.executable, "-m", "getsome", "tv"], cwd=str(paths.APP_DIR.parent), env=env)
         if not hasattr(self, "tv_timer"):

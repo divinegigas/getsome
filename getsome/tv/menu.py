@@ -29,6 +29,7 @@ AUTO_CLOSE_S = 12.0
 ZOOMS = [("normal", "Normal"), ("zoom", "Zoom (fill, no bars)"), ("cinema", "Cinema zoom (wide films)"),
          ("stretch", "Stretch to fill"), ("4:3", "Force 4:3"), ("16:9", "Force 16:9")]
 ZOOM_KEYS = [k for k, _ in ZOOMS]
+SIDES = [("black", "Black bars"), ("blur", "Blurred picture")]       # for pictures narrower than the screen
 
 
 def lang_name(code: str | None) -> str:
@@ -53,7 +54,7 @@ def track_label(t: dict) -> str:
 
 
 class TrackMenu:
-    ROWS = ("audio", "subs", "picture", "close")
+    ROWS = ("audio", "subs", "picture", "sides", "close")
 
     def __init__(self):
         self.open = False
@@ -63,11 +64,13 @@ class TrackMenu:
         self.audio_i = 0
         self.sub_i = 0            # 0 = off, 1.. = subs[i-1]
         self.zoom_i = 0           # index into ZOOMS
+        self.sides_i = 0          # index into SIDES
         self._touched = 0.0
 
     # ---------------------------------------------------------------- state
-    def show(self, tracks: list[dict], zoom: str = "normal") -> None:
+    def show(self, tracks: list[dict], zoom: str = "normal", sides: str = "black") -> None:
         self.zoom_i = ZOOM_KEYS.index(zoom) if zoom in ZOOM_KEYS else 0
+        self.sides_i = 1 if sides == "blur" else 0
         self.audio = [t for t in tracks if t.get("type") == "audio"]
         self.subs = [t for t in tracks if t.get("type") == "sub"]
         self.audio_i = next((i for i, t in enumerate(self.audio) if t.get("selected")), 0)
@@ -99,6 +102,9 @@ class TrackMenu:
         if r == "picture":
             self.zoom_i = (self.zoom_i + d) % len(ZOOMS)
             return "picture", ZOOMS[self.zoom_i][0]
+        if r == "sides":
+            self.sides_i = (self.sides_i + d) % len(SIDES)
+            return "sides", SIDES[self.sides_i][0]
         return None
 
     # ---------------------------------------------------------------- paint
@@ -106,7 +112,7 @@ class TrackMenu:
         if not self.open:
             return
         unit = h / 1080.0
-        pw, ph = 960 * unit, 546 * unit
+        pw, ph = 960 * unit, 632 * unit
         x0, y0 = (w - pw) / 2, (h - ph) / 2
         p.save()
         p.fillRect(QRectF(0, 0, w, h), QColor(0, 0, 0, 120))
@@ -132,6 +138,7 @@ class TrackMenu:
             ("SUBTITLES", "Off" if not self.sub_i else track_label(self.subs[self.sub_i - 1]),
              bool(self.subs)),
             ("PICTURE", ZOOMS[self.zoom_i][1], True),
+            ("SIDES", SIDES[self.sides_i][1], True),
             ("CLOSE", "", True),
         ]
         y = y0 + 130 * unit

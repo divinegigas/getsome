@@ -26,6 +26,8 @@ DEFAULTS: dict[str, Any] = {
     "keep_awake": True,
     # ...but let it sleep after this many hours without a button press (0 = never)
     "keep_awake_hours": 4,
+    # Pictures narrower than the screen (4:3): "black" bars or a "blur"red copy of the picture at the sides
+    "side_fill": "black",
     # Picture (zoom) mode per show, picked in the TV menu: {show or film title: mode} (tv/menu.ZOOMS)
     "zoom_by_show": {},
     # Preferred audio / subtitle language codes picked in the TV menu ("" = file default, sub "off" = none)

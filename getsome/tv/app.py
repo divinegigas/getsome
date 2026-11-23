@@ -662,10 +662,47 @@ class TVWindow(QMainWindow):
         self._zoom_now = mode
 
     def _apply_zoom(self) -> None:
-        """Each new file: the show's remembered picture mode; commercials, cards and bumpers play normally."""
+        """Each new file: the show's remembered picture mode; commercials, cards and bumpers play normally.
+        Then the blurred sides, if they're on and the picture is narrower than the screen."""
         mode = self._zoom_mode()
         if mode != getattr(self, "_zoom_now", "normal"):
             self._set_zoom(mode)
+        self._apply_sides()
+
+    def _apply_sides(self) -> None:
+        self._sides_vf = self._sides_filter() if self.settings.get("side_fill", "black") == "blur" else ""
+        mode = getattr(self, "_zoom_now", "normal")
+        if mode in ("4:3", "16:9"):           # the sides filter already makes the right shape
+            try:
+                self.video.player["video-aspect-override"] = "no" if self._sides_vf else mode
+            except Exception:
+                pass
+        self._update_vf()
+
+    def _sides_filter(self) -> str:
+        """lavfi graph: the picture, sharp, in the middle of a screen-shaped frame whose sides are a
+        blurred, darkened, stretched copy of it (cheap: blurred at 320x180, then scaled up)."""
+        mode = getattr(self, "_zoom_now", "normal")
+        if not self._zoom_key() or mode not in ("normal", "4:3", "16:9"):
+            return ""                         # commercials/cards, or a mode that already fills the screen
+        try:
+            vp = self.video.player.video_params or {}
+        except Exception:
+            vp = {}
+        w, h = vp.get("w") or 0, vp.get("h") or 0
+        dw, dh = vp.get("dw") or w, vp.get("dh") or h
+        if not (w and h and dw and dh):
+            return ""
+        aspect = {"4:3": 4 / 3, "16:9": 16 / 9}.get(mode, dw / dh)
+        screen = self.video.width() / max(1, self.video.height())
+        if aspect >= screen * 0.97:
+            return ""                         # already fills the width: nothing to fill
+        H = min(h, 1080) // 2 * 2
+        W = int(H * screen) // 2 * 2
+        fw = int(H * aspect) // 2 * 2
+        return ("lavfi=[split=2[a][b];"
+                f"[a]scale=320:180,boxblur=10:2,eq=brightness=-0.10:saturation=1.15,scale={W}:{H},setsar=1[bg];"
+                f"[b]scale={fw}:{H},setsar=1[fg];[bg][fg]overlay=x={(W - fw) // 2}:y=0]")
 
     def _apply_track_prefs(self) -> None:
         """Pick audio/subtitle tracks matching the preferred languages, once per loaded file."""
@@ -768,7 +805,7 @@ class TVWindow(QMainWindow):
             tracks = list(self.video.player.track_list or [])
         except Exception:
             tracks = []
-        self.menu.show(tracks, self._zoom_mode())
+        self.menu.show(tracks, self._zoom_mode(), self.settings.get("side_fill", "black"))
         self.state.banner_fade.hide()
         self.video.update()
 
@@ -778,6 +815,13 @@ class TVWindow(QMainWindow):
             return
         kind, t = res
         p = self.video.player
+        if kind == "sides":              # blurred sides for narrow pictures: one setting for everything
+            s = settings.load()
+            s["side_fill"] = self.settings["side_fill"] = t
+            settings.save(s)
+            self._apply_sides()
+            self.video.update()
+            return
         if kind == "picture":            # remembered for this show / film, on every channel
             key = self._zoom_key()
             if key:
@@ -790,6 +834,7 @@ class TVWindow(QMainWindow):
                 s["zoom_by_show"] = self.settings["zoom_by_show"] = zooms
                 settings.save(s)
             self._set_zoom(t)
+            self._apply_sides()
             self.video.update()
             return
         if kind == "audio":
@@ -1114,19 +1159,34 @@ class TVWindow(QMainWindow):
         if locked == was and not locked:
             return
         pl = self.video.player
+        self._update_vf()
         try:
             if locked:
-                pl["hwdec"] = "no"             # the blur filter needs frames in memory
-                pl["vf"] = self.BLUR_VF
                 pl.mute = True
-            else:
-                pl["vf"] = ""
-                pl["hwdec"] = str(self.settings.get("hwdec", "no"))
-                if not self.tuning:
-                    pl.mute = False
+            elif not self.tuning:
+                pl.mute = False
         except Exception as e:
-            _log.warning("restricted channel filter: %s", e)
+            _log.warning("restricted channel sound: %s", e)
         self.video.update()
+
+    def _update_vf(self) -> None:
+        """The one place mpv's video filters are set: blurred sides (Settings: side_fill) and the
+        restricted-channel blur. Filters need frames in memory, so hardware decoding pauses meanwhile."""
+        chain = []
+        if self.state.locked:
+            chain.append(self.BLUR_VF)
+        elif getattr(self, "_sides_vf", ""):
+            chain.append(self._sides_vf)
+        vf = ",".join(chain)
+        pl = self.video.player
+        if vf == getattr(self, "_vf_now", ""):
+            return
+        try:
+            pl["hwdec"] = "no" if vf else str(self.settings.get("hwdec", "no"))
+            pl["vf"] = vf
+            self._vf_now = vf
+        except Exception as e:
+            _log.warning("video filter: %s", e)
 
     def _open_pin(self) -> None:
         self.state.pin_pick = None

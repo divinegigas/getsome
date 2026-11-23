@@ -294,6 +294,16 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**Blurred sides for 4:3 (23 Nov, owner request)**: TV MENU row SIDES: Black bars / Blurred picture
+(`settings.side_fill`, one global choice). `TVWindow._apply_sides` (after `_apply_zoom` on every playback
+restart and on menu changes) builds `_sides_filter()` only for features (`_zoom_key()`), in Normal / Force 4:3 /
+Force 16:9, when the picture is narrower than the screen (`player.video_params` dw/dh, NOT `player["video-params"]`,
+which python-mpv maps to options/): lavfi split → bg scale 320x180, boxblur 10:2, eq darker, scale to W×H
+(screen aspect, H = video height ≤ 1080) | fg scaled to its aspect at H → overlay centred. Force 4:3/16:9 drop
+`video-aspect-override` while the filter runs (it already makes the shape). `_update_vf` is now the single place
+setting mpv `vf` (+ `hwdec=no` while any filter runs): the restricted lock blur replaces the sides while locked.
+Tested: 4:3 clip fills the width with blurred sides, middle sharp; 16:9 clip untouched; lock still blurs.
+
 **Cable box showed the old line-up and buffered a lot (23 Nov, owner report)**: the head-end service
 (`getsome serve`, started once at login) never reloaded: FS42's StationManager keeps the station list in
 memory and the process kept its old code, so after the owner rebuilt everything it served the old channels,

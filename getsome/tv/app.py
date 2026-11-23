@@ -44,6 +44,7 @@ MAX_DRIFT = 1.0         # seconds off the schedule before we seek to correct
 DIGIT_TIMEOUT_MS = 1600
 NO_SIGNAL_TYPES = {"guide", "web", "executable"}  # FS42 types we don't render
 GUIDE_TYPE = "getsome_guide"
+CARDS_BEFORE = 180      # seconds: long gaps before a film show film cards until this much is left
 
 
 EXIT_TO_DESKTOP = 10        # exit code: the setup window (if it started us) closes too
@@ -411,6 +412,13 @@ class TVWindow(QMainWindow):
             while p is not None and len(info["upcoming"]) < 3:
                 info["upcoming"].append((p.start.strftime("%-I:%M %p"), p.title))
                 p = self._next_real(ch.name, p.end)
+        if info["movie"] and (seg.ends_at - seg.starts_at).total_seconds() > CARDS_BEFORE + 20:
+            info["cards"] = None       # long gap before a film: film cards until the last 3 minutes
+
+            def fetch(info=info, name=ch.name, number=ch.number, after=seg.ends_at):
+                info["cards"] = self._film_cards(name, number, after)
+
+            threading.Thread(target=fetch, name="film-cards", daemon=True).start()
         self.state.intermission = info
         # music: the guide's RPG tracks plus the rock / metal / punk / reggae / ska / jrpg beds,
         # one picked per gap (the same pick if you tune away and back)
@@ -423,6 +431,47 @@ class TVWindow(QMainWindow):
         remaining = (seg.ends_at - dt.datetime.now()).total_seconds()
         self.seg_timer.start(max(50, int(remaining * 1000)))
         self._finish_tuning(token)
+
+    @staticmethod
+    def _film_cards(name: str, number: int, after: dt.datetime) -> list[dict]:
+        """Cards for the films coming up on this channel (the next feature first): a "coming up"
+        card each (artwork, synopsis, when it's on) and a trivia card when the NFO has facts."""
+        from .. import ads
+
+        cards, seen = [], set()
+        try:
+            progs = fs42.programmes(name, after - dt.timedelta(seconds=30), after + dt.timedelta(hours=36), limit=60)
+        except Exception as e:
+            _log.debug("film cards: %s", e)
+            return []
+        today = dt.date.today()
+        for k, prog in enumerate(p for p in progs if p.path and not p.off_air and fs42._is_movie(p.path)):
+            if prog.path in seen or prog.start < after - dt.timedelta(minutes=1):
+                continue
+            seen.add(prog.path)
+            try:
+                film = ads.movie_card(prog.path)
+            except Exception as e:
+                _log.debug("film card for %s: %s", prog.path, e)
+                continue
+            day = prog.start.date()
+            clock = prog.start.strftime("%-I:%M %p")
+            if not cards:
+                when = f"NEXT  ·  {clock}"
+            elif day == today:
+                when = f"{'TONIGHT' if prog.start.hour >= 17 else 'TODAY'} AT {clock}"
+            elif day == today + dt.timedelta(days=1):
+                when = f"TOMORROW AT {clock}"
+            else:
+                when = f"{prog.start.strftime('%A').upper()} AT {clock}"
+            film.update(when=when, channel=number, title=film.get("title") or prog.title)
+            cards.append({"kind": "film", **film})
+            if film.get("facts"):
+                fact = film["facts"][k % len(film["facts"])]
+                cards.append({"kind": "film_fact", "fact": fact, **film})
+            if len(seen) >= 6:
+                break
+        return cards
 
     def _setup_ad(self, ch, seg, what: tuple[str, str]) -> None:
         """A generated commercial, promo, channel ID or break sting: drawn live over its jingle."""

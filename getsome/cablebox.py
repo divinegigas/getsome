@@ -253,6 +253,7 @@ def install() -> bool:
     ads.on_this_day = safe(lambda path, when=None: tuple(call("on_this_day", path, when.isoformat() if when else None)),
                            ("ON THIS DAY", []))
     ads.episode_details = safe(lambda path: tuple(call("episode_details", path)), ("", ""))
+    ads.movie_card = safe(lambda path: call("movie_card", path), dict)
     artwork.for_programme = safe(lambda path: call("artwork", path) if path else {}, dict)
     model.load = lambda: [model.Channel(r["number"], r["name"], restricted=True, lock_mode=r["lock_mode"],
                                         free_from=r["free_from"], free_to=r["free_to"])

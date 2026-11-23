@@ -316,6 +316,14 @@ def paint_intermission(p: QPainter, w: int, h: int, info: dict, t: float, remain
     Five looks; style 1 is below, the others are in intermissions.py."""
     from .intermissions import PAINTERS
 
+    cards = info.get("cards")
+    if cards and remaining > 180:          # long gap before a film: film cards until the last 3 minutes
+        from .art_paint import film_cards
+
+        p.save()
+        film_cards(p, w, h, info, t, remaining)
+        p.restore()
+        return
     painter = PAINTERS.get(info.get("style", 1))
     if painter is not None:
         p.save()

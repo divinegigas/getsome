@@ -351,6 +351,55 @@ def show_facts(folder: Path, title: str, channel: int | str = "") -> tuple[list[
     return facts, aired
 
 
+def movie_card(path: str) -> dict:
+    """Everything a "coming up" film card shows, for a scheduled film (a link in a channel's catalog):
+    title, year, rating, runtime, genres, synopsis, tagline, trivia facts and local artwork."""
+    import os
+
+    from . import artwork, media_index
+
+    # follow only the channel's own catalog link: the NFO and artwork sit next to the film as it
+    # appears in the library (which may itself be organised with symlinks)
+    real = Path(os.path.realpath(path))
+    try:                                  # the film as the library knows it (the link may skip symlinks)
+        from . import library
+
+        name = Path(path).name
+        for m in library.cached_movies() or []:
+            if Path(m.path).name == name or os.path.realpath(m.path) == str(real):
+                real = Path(m.path)
+                if Path(m.path).name == name:
+                    break
+    except Exception:
+        pass
+    out: dict = {"title": real.stem, "year": "", "rating": "", "runtime": "", "genres": [], "plot": "",
+                 "tagline": "", "facts": [], "art": {}}
+    try:
+        mv = media_index.read_movie(real)
+        out.update(title=mv.title, year=str(mv.year or ""), rating=mv.rating or "", genres=list(mv.genres or [])[:3])
+        if mv.runtime:
+            h, m = divmod(mv.runtime, 60)
+            out["runtime"] = f"{h}h {m:02d}m" if h else f"{m}m"
+    except OSError:
+        pass
+    xml = _read(real.with_suffix(".nfo"))
+    if not xml:
+        for alt in real.parent.glob("*.nfo"):
+            xml = _read(alt)
+            break
+    out["plot"] = _unesc(_xml_tag(xml, "plot"))
+    out["tagline"] = _unesc(_xml_tag(xml, "tagline"))
+    try:
+        out["facts"] = movie_facts(real)
+    except OSError:
+        pass
+    try:
+        out["art"] = artwork.movie_art(str(real))
+    except OSError:
+        pass
+    return out
+
+
 def movie_facts(path: Path) -> list[str]:
     xml = _read(path.with_suffix(".nfo"))
     if not xml:

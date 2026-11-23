@@ -166,6 +166,7 @@ def _calls() -> dict:
         "on_this_day": lambda path, day=None: list(ads.on_this_day(path, dt.date.fromisoformat(day) if day else None)),
         "episode_details": lambda path: list(ads.episode_details(path)),
         "artwork": artwork.for_programme,
+        "movie_card": ads.movie_card,
     }
 
 

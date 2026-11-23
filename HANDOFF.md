@@ -294,6 +294,17 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**Film cards before features (23 Nov, owner request)**: the countdown screen only shows for the last 3
+minutes (`tv/app.CARDS_BEFORE` = 180). In a longer gap before a film, `TVWindow._intermission` starts a
+thread (`_film_cards`) that collects up to six films coming up on the channel in the next 36 h (next
+feature first) via `fs42.programmes` + `ads.movie_card(path)` (title, year, rating, runtime, genres, NFO
+plot/tagline, `movie_facts`, `artwork.movie_art`; finds the film in the movie-library cache by file name,
+because catalog links resolve symlinks). `bumpers.paint_intermission` draws `art_paint.film_cards`
+while remaining > 180 s: 12 s per card ("coming up": backdrop Ken Burns, poster, logo/title, meta,
+tagline, synopsis, when-bar "NEXT · 9:00 PM / TONIGHT AT / TOMORROW AT / <WEEKDAY> AT"; "did you know?":
+fact + poster), fades between cards, corner "FEATURE PRESENTATION IN mm:ss". Gaps before TV episodes are
+unchanged. Cable boxes get `movie_card` from the head-end.
+
 **Commercial folders in Settings (23 Nov)**: `settings.commercial_folders` (list, edited like the library
 folders). `ads.link_pool` links every video in them (subfolders, no dot-files, de-duplicated) as `own_NNN`
 after the channel's own `ad_folder`, for every channel with commercial breaks. `ads.commercials_signature()`

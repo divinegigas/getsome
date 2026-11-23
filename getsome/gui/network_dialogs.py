@@ -290,7 +290,9 @@ class RemoteFixDialog(QDialog):
             self.msg.setText("Cancelled (no password given). Nothing was changed.")
 
     def done(self, r):
+        from PySide6.QtCore import QProcess
+
         p = getattr(self, "proc", None)
-        if p is not None and p.state() != p.NotRunning:
+        if p is not None and p.state() != QProcess.ProcessState.NotRunning:
             p.kill()
         super().done(r)

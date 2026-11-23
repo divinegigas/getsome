@@ -14,7 +14,10 @@ scheduling and playback engine and adding a proper GUI and polish.
 - **Setup window:** making channels must be as easy as possible. Sensible defaults, templates, folder pickers instead of typed paths. Sequential (remembers its place, staggered start points) or shuffle, per channel and per show. Time blocks, broadcast hours, sign-off, and off-air modes (static, bars, infomercials). Reads TinyMediaManager `.nfo` files. "Launch straight into TV" is OFF by default.
 - **TV mode:** fullscreen, live-feeling (tuning in at 12:38 lands about 38 min in), only the current channel decodes, big neon channel numbers, a static-and-hiss transition that covers loading, a guide channel, SMPTE bars with a 1 kHz tone off-air, and a user override folder for custom assets.
 - **Controls:** USB IR remotes act as keyboards (PgUp/PgDn, digits), and keys are remappable.
-- **Stretch:** commercials and bumpers only at real break points (chapters, then ffmpeg black detection, with toggles), **never at random intervals**; commercial and bumper pool folders per channel.
+- **Stretch:** commercials inside episodes at chapter markers; without chapters, at the **typical act-break
+  positions for the episode's length** (owner's decision, 23 Nov: instant, no scanning; fixed positions,
+  never random), or per channel "find the real act breaks" (breaks.py: silence + fade to black, slower
+  first build). Commercial folders in Settings.
 - **Look:** an 80s vision of the future (synthwave, neon magenta and cyan, chrome). Guide music: RPG-flavoured synth with some metal.
 
 ## Hard rules

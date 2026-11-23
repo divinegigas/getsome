@@ -224,11 +224,17 @@ class ChannelEditor(QFrame):
 
         adrow = QHBoxLayout()
         self.ads = QCheckBox("Commercial breaks")
-        self.ads.setToolTip("Breaks inside episodes where the show fades to black with a pause (its act breaks)\n"
-                            "or at chapter markers, and after each show. Never at random moments.\n"
+        self.ads.setToolTip("Breaks inside episodes at chapter markers, or else at the usual act-break points\n"
+                            "for the episode's length (like TV was cut), and after each show.\n"
                             "Show cards, trivia and your own commercials (Settings → Commercial folders).")
         self.ads.toggled.connect(self._ads_changed)
         adrow.addWidget(self.ads)
+        self.black = QCheckBox("find the real act breaks (slower first build)")
+        self.black.setToolTip("Instead of the usual positions, look in each episode for where the picture fades to\n"
+                              "black and the sound pauses. A few seconds per episode, once (remembered after).\n"
+                              "Use it on a channel where breaks cut into scenes.")
+        self.black.toggled.connect(self._black_changed)
+        adrow.addWidget(self.black)
         self.ads_note = QLabel("Your own commercials: Settings → Commercial folders")
         self.ads_note.setObjectName("dim")
         adrow.addWidget(self.ads_note)
@@ -299,6 +305,7 @@ class ChannelEditor(QFrame):
         keys_ = [k for k, _ in model.START_MODES]
         self.start_mode.setCurrentIndex(keys_.index(ch.start_mode) if ch.start_mode in keys_ else 0)
         self.ads.setChecked(ch.commercials)
+        self.black.setChecked(ch.black_detect)
         self.restricted.setChecked(ch.restricted)
         self.lock_mode.setCurrentIndex(1 if ch.lock_mode == "hours" else 0)
         self.free_from.setCurrentIndex(max(0, self.free_from.findData(ch.free_from)))
@@ -313,6 +320,7 @@ class ChannelEditor(QFrame):
         ch = self.ch
         self.ads_widget.setVisible(ch.kind != model.MOVIES)
         self.ads_note.setVisible(ch.commercials)
+        self.black.setVisible(ch.commercials)
         self.own_ads.setVisible(bool(ch.ad_folder))
         self.own_ads.setText(f"Stop using “{Path(ch.ad_folder).name}” on this channel" if ch.ad_folder else "")
 
@@ -321,6 +329,12 @@ class ChannelEditor(QFrame):
             return
         self.ch.commercials = on
         self._update_ads_ui()
+        self._commit()
+
+    def _black_changed(self, on: bool) -> None:
+        if self._loading or self.ch is None:
+            return
+        self.ch.black_detect = on            # part of the channel hash: shows "needs build"
         self._commit()
 
     def _pick_own_ads(self) -> None:

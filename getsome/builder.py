@@ -115,19 +115,28 @@ def _sequence_hours(name: str) -> dict[str, set[tuple[int, int]]]:
 
 
 def _find_breaks(ch: model.Channel, plan, log: Log, step) -> None:
-    """Commercial breaks only at real break points: chapter markers (scanned by -r), then act
-    breaks (a fade to black with a pause in the sound, breaks.py: quick, cached per file); any
-    file with neither gets an end-only marker so FS42 never splits it at arbitrary moments."""
+    """Where breaks go inside episodes: chapter markers (scanned by -r) always win; otherwise the typical
+    act-break positions for the episode's length (instant), or, if the channel asks for it, the real
+    act breaks found by breaks.find (slower first build, cached). Too-short files get an end-only
+    marker (all their ads after them)."""
     from . import breaks
 
     files = fs42.catalog_files(ch.name)
-    todo = [(rp, d) for rp, d in files if d > 0 and fs42.break_kind(rp) in ("", "end_only")]
+    todo = []
+    for rp, d in files:
+        kind = fs42.break_kind(rp)
+        # chapters always win; break points from FS42's own fade-to-black scan are kept as they are
+        if d > 0 and kind != "chapters" and not (kind == "black" and not breaks.known(rp)):
+            todo.append((rp, d))
     if todo:
-        step(f"finding act breaks in {len(todo)} files (only new files take time)")
-        found = breaks.scan(todo, lambda i, n, name: step(f"finding act breaks: {i + 1} of {n}") if i % 5 == 0 else None)
+        if ch.black_detect:
+            step(f"finding the real act breaks in {len(todo)} files (only new files take time)")
+        plan_ = breaks.plan(todo, ch.black_detect,
+                            lambda i, n, name: step(f"finding act breaks: {i + 1} of {n}") if i % 5 == 0 else None)
         for rp, d in todo:
-            if found.get(rp):
-                fs42.set_break_points(rp, found[rp], d)
+            pts, _mode = plan_.get(rp, (None, ""))
+            if pts:
+                fs42.set_break_points(rp, pts, d)
     counts = {"chapters": 0, "black": 0, "end_only": 0}
     for rp, dur in files:
         kind = fs42.break_kind(rp)
@@ -136,7 +145,8 @@ def _find_breaks(ch: model.Channel, plan, log: Log, step) -> None:
             kind = "end_only"
         if kind in counts:
             counts[kind] += 1
-    log(f"  break points: {counts['chapters']} files with chapters, {counts['black']} with act breaks, "
+    log(f"  break points: {counts['chapters']} files with chapters, {counts['black']} with act breaks"
+        f" ({'found in the files' if ch.black_detect else 'typical positions'}), "
         f"{counts['end_only']} with breaks at the end only")
 
 

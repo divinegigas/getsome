@@ -1,5 +1,11 @@
-"""Find a show's act breaks quickly, so commercial breaks fall inside the episode where the show
-itself fades out (the way it was made for TV), instead of all the ad time piling up at the end.
+"""Where commercial breaks go inside an episode that has no chapter markers.
+
+Default (instant, no scanning): `typical(duration)`, the usual act-break positions for an episode of
+that length, the way TV was cut (cold open, middle, tag; teaser + acts for hour dramas). Fixed
+positions from the running time, not random ones. The owner chose this as the default (scanning a
+whole library takes hours the first time).
+
+Optional per channel ("find the real act breaks", Channel.black_detect): `find()` below.
 
 An act break is a fade to black *and* a moment of silence. Decoding only the audio to find the
 silences is very fast; each silence is then confirmed with a ~3 s look at the picture around it.
@@ -20,7 +26,7 @@ from pathlib import Path
 from . import paths
 
 _log = logging.getLogger("getsome.breaks")
-VERSION = 1
+VERSION = 2            # 2: entries remember "typical" or "detected"
 EDGE = 60.0            # no breaks in the first or last minute
 MIN_GAP = 90.0         # breaks at least this far apart
 MAX_CANDIDATES = 14    # silences to check per file
@@ -90,10 +96,34 @@ def find(path: str, duration: float) -> list[float]:
     return sorted(found)
 
 
-def scan(files: list[tuple[str, float]], progress=None) -> dict[str, list[float]]:
-    """Break times for each (realpath, duration); cached by file size and modification time."""
+def known(realpath: str) -> bool:
+    """Whether break points for this file came from us (typical or detected)."""
+    return realpath in _load()["files"]
+
+
+def typical(duration: float) -> list[float]:
+    """The usual act-break positions for an episode of this length (seconds)."""
+    m = duration / 60
+    if m < 8:
+        return []                                   # shorts: ads after
+    if m < 16:
+        fr = [0.5]                                  # ~11-min cartoon: one break in the middle
+    elif m < 35:
+        fr = [0.12, 0.52, 0.88]                     # ~22-min sitcom: cold open | act 1 | act 2 | tag
+    elif m < 56:
+        fr = [0.09, 0.28, 0.48, 0.68, 0.87]         # ~42-min drama: teaser + acts
+    else:
+        n = max(3, round(m / 15))                   # longer (films on a TV channel): every ~15 min
+        fr = [k / (n + 1) for k in range(1, n + 1)]
+    return [round(duration * f, 2) for f in fr]
+
+
+def plan(files: list[tuple[str, float]], detect: bool, progress=None) -> dict[str, tuple[list[float], str]]:
+    """Breaks to store for each (realpath, duration) that needs them: {realpath: (times, mode)}, mode
+    "typical" or "detected". Already-stored results are skipped (detected ones are never downgraded).
+    With detect=False this is instant; with detect=True each file is scanned once (cached)."""
     cache = _load()
-    out: dict[str, list[float]] = {}
+    out: dict[str, tuple[list[float], str]] = {}
     todo = []
     for rp, dur in files:
         try:
@@ -102,10 +132,14 @@ def scan(files: list[tuple[str, float]], progress=None) -> dict[str, list[float]
             continue
         key = f"{st.st_size}:{int(st.st_mtime)}"
         hit = cache["files"].get(rp)
-        if hit and hit.get("key") == key:
-            out[rp] = hit["breaks"]
-        else:
+        fresh = hit and hit.get("key") == key
+        if fresh and (hit.get("mode") == "detected" or not detect):
+            continue                                # stored already (and good enough)
+        if detect:
             todo.append((rp, dur, key))
+        else:
+            out[rp] = (typical(dur), "typical")
+            cache["files"][rp] = {"key": key, "breaks": out[rp][0], "mode": "typical"}
     for i, (rp, dur, key) in enumerate(todo):
         if progress:
             progress(i, len(todo), Path(rp).name)
@@ -114,10 +148,11 @@ def scan(files: list[tuple[str, float]], progress=None) -> dict[str, list[float]
         except (OSError, subprocess.SubprocessError) as e:
             _log.warning("couldn't scan %s for act breaks: %s", rp, e)
             pts = []
-        out[rp] = pts
-        cache["files"][rp] = {"key": key, "breaks": pts}
+        # nothing found: fall back to the typical positions (still marked detected: don't scan again)
+        out[rp] = (pts or typical(dur), "detected")
+        cache["files"][rp] = {"key": key, "breaks": out[rp][0], "mode": "detected"}
         if i % 10 == 9:                  # keep progress if the build is interrupted
             _cache_file().write_text(json.dumps(cache))
-    if todo:
+    if out:
         _cache_file().write_text(json.dumps(cache))
     return out

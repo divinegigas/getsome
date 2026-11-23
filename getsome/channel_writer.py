@@ -431,7 +431,8 @@ def channel_hash(ch: model.Channel, conf: dict) -> str:
     if has_ads(ch):
         from . import ads
 
-        extra = f"{h}|{ads.ADS_VERSION}|{ads.POOL_VERSION}|{_products()}|{ads.commercials_signature()}"
+        extra = (f"{h}|{ads.ADS_VERSION}|{ads.POOL_VERSION}|{_products()}|{ads.commercials_signature()}"
+                 f"|{'detect' if ch.black_detect else 'typical'}")
         h = hashlib.sha1(extra.encode()).hexdigest()[:16]
     return h
 

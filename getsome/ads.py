@@ -115,7 +115,10 @@ def beds_dir() -> Path:
 
 
 def intermission_beds() -> list[Path]:
-    return sorted(beds_dir().glob("*.m4a"))
+    from . import beds
+
+    mine = set(beds.edition_genres())         # XCable: jazz only; Neon Cable 42: its six styles
+    return sorted(p for p in beds_dir().glob("*.m4a") if p.stem.rsplit("_", 1)[0] in mine)
 
 
 def ensure_clips(force: bool = False) -> None:
@@ -130,7 +133,7 @@ def ensure_clips(force: bool = False) -> None:
     stamp = d / ".version"
     if stamp.exists() and stamp.read_text().strip() != ADS_VERSION:
         force = True
-    G = beds.GENRES
+    G = beds.edition_genres()
     # (file name, seconds, music function)
     jobs = [(f"ad_{i + 1:02d}.mp4", a.seconds, lambda s, i=i: beds.compose(G[i % len(G)], 100 + i, s))
             for i, a in enumerate(ADS)]
@@ -139,13 +142,15 @@ def ensure_clips(force: bool = False) -> None:
             for v in range(CARD_VARIANTS):
                 jobs.append((card_clip(g, secs, v + 1).name, secs,
                              lambda s, g=g, seed=600 + gi * 10 + secs + v: beds.compose(g, seed, s)))
-    jobs += [(f"id_{i + 1}.mp4", s_, lambda s, i=i: synth.ad_jingle(200 + i, s)) for i, s_ in enumerate(IDS)]
+    sting = ((lambda seed, s: beds.compose(G[seed % len(G)], seed, s)) if paths.XCABLE   # jazz stings
+             else (lambda seed, s: synth.ad_jingle(seed, s)))
+    jobs += [(f"id_{i + 1}.mp4", s_, lambda s, i=i: sting(200 + i, s)) for i, s_ in enumerate(IDS)]
     bb = break_bumps_dir()
     for sub in ("pre", "post"):
         (bb / sub).mkdir(parents=True, exist_ok=True)
-    jobs += [(f"../breakbumps/pre/brb_{i + 1}.mp4", BUMP_SECONDS, lambda s, i=i: synth.ad_jingle(400 + i, s))
+    jobs += [(f"../breakbumps/pre/brb_{i + 1}.mp4", BUMP_SECONDS, lambda s, i=i: sting(400 + i, s))
              for i in range(BUMPS_EACH)]
-    jobs += [(f"../breakbumps/post/back_{i + 1}.mp4", BUMP_SECONDS, lambda s, i=i: synth.ad_jingle(500 + i, s))
+    jobs += [(f"../breakbumps/post/back_{i + 1}.mp4", BUMP_SECONDS, lambda s, i=i: sting(500 + i, s))
              for i in range(BUMPS_EACH)]
     ff = assets_gen._ffmpeg()
     for name, secs, music in jobs:
@@ -416,7 +421,8 @@ def link_pool(slug: str, number: int, shows: list[tuple[str, str, str]], own_fol
         (d / f.name).symlink_to(f)
 
     # card clips rotate through the genres so neighbouring cards sound different
-    carriers = {L: [card_clip(g, L, v + 1) for v in range(CARD_VARIANTS) for g in beds.GENRES] for L in CARD_LENGTHS}
+    carriers = {L: [card_clip(g, L, v + 1) for v in range(CARD_VARIANTS) for g in beds.edition_genres()]
+                for L in CARD_LENGTHS}
     turn = {L: rng.randrange(len(carriers[L])) for L in CARD_LENGTHS}
 
     def card(name: str, seconds: int, data: dict) -> None:

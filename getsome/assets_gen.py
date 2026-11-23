@@ -172,6 +172,14 @@ GENRE_TRACKS = {
     "g_ska1": ("ska", 51, "Checkerboard Express"),
     "g_ska2": ("ska", 52, "Pinball Skank"),
 }
+if paths.XCABLE:                 # XCable: only its own late-night jazz (invented titles)
+    GENRE_TRACKS = {
+        "x_lounge1": ("lounge", 61, "Velvet Rope"), "x_lounge2": ("lounge", 62, "Smoke and Brass"),
+        "x_lounge3": ("lounge", 63, "After Midnight Walk"),
+        "x_groove1": ("groove", 71, "Gold Card Funk"), "x_groove2": ("groove", 72, "Back Room Strut"),
+        "x_groove3": ("groove", 73, "Silk Lapels"),
+        "x_velvet1": ("velvet", 81, "Last Call"), "x_velvet2": ("velvet", 82, "Low Lights"),
+    }
 SHUFFLES = ("shuffle", "shuffle_rpg")
 
 
@@ -179,6 +187,12 @@ def music_options() -> list[tuple[str, str]]:
     """(key, display name) for every guide-music choice, ready or not."""
     from . import music
 
+    if paths.XCABLE:
+        opts = [("shuffle", "Shuffle all (late-night jazz)")]
+        opts += [(key, f"{name}  ({style})") for key, (style, _seed, name) in GENRE_TRACKS.items()]
+        if _override_music():
+            opts.append(("custom", "Your own music"))
+        return opts
     opts = [("shuffle", "Shuffle all (every style)"), ("shuffle_rpg", "Shuffle RPG tracks only")]
     opts += [(t.key, t.name) for t in music.TRACKS]
     opts += [(key, f"{name}  ({style})") for key, (style, _seed, name) in GENRE_TRACKS.items()]
@@ -413,7 +427,13 @@ def ensure_upnext(force: bool = False) -> None:
             continue
         _log.info("generating %s", dst.name)
         wav = d / f".jingle_{i + 1}.wav"
-        synth.write_wav(synth.jingle(i, UPNEXT_SECONDS), wav)
+        if paths.XCABLE:                 # a few bars of jazz instead of the synth jingle
+            from . import beds
+
+            audio = beds.compose(beds.JAZZ_GENRES[i % 3], 300 + i, UPNEXT_SECONDS)
+        else:
+            audio = synth.jingle(i, UPNEXT_SECONDS)
+        synth.write_wav(audio, wav)
         subprocess.run([ff, "-y", "-loglevel", "error", "-f", "lavfi",
                         "-i", f"color=c=black:size=320x180:rate=10:duration={UPNEXT_SECONDS}",
                         "-i", str(wav), *video_codec_args("low"), "-c:a", "aac", "-b:a", "160k",

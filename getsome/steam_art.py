@@ -97,6 +97,14 @@ def _title(p, w: int, x: float, y: float, px: int, anchor: str = "cm", lines: bo
     from .tv.overlays import CYAN, PINK, _chrome_text, draw_neon, font
     from PySide6.QtGui import QFontMetricsF
 
+    from . import paths
+
+    if lines and paths.XCABLE:     # a huge gold "X" over "CABLE"
+        big = int(px * 3.2)
+        tw = QFontMetricsF(font("numbers", big)).horizontalAdvance("X")
+        draw_neon(p, "X", "numbers", big, PINK, x, y + big * 0.45, "cm", flicker=False)
+        draw_neon(p, "CABLE", "numbers", px, CYAN, x, y + big * 0.45 + big * 0.62, "cm", flicker=False)
+        return
     if lines:     # stacked, for the tall cover
         draw_neon(p, "NEON", "numbers", px, PINK, x, y, "cm", flicker=False)
         draw_neon(p, "CABLE", "numbers", px, CYAN, x, y + px * 1.05, "cm", flicker=False)
@@ -113,8 +121,15 @@ def _title_line(p, x: float, cy: float, px: int, max_w: float) -> None:
     """ "NEON CABLE" in pink neon followed by a big chrome "42", fitted to max_w, centred on cy."""
     from PySide6.QtGui import QFontMetricsF
 
+    from . import paths
     from .tv.overlays import PINK, _chrome_text, font, neon_image
 
+    if paths.XCABLE:               # one gold word, fitted
+        while px > 20 and neon_image("XCABLE", "numbers", px, PINK).width() > max_w:
+            px = int(px * 0.92)
+        img = neon_image("XCABLE", "numbers", px, PINK)
+        p.drawImage(int(x), int(cy - img.height() / 2), img)
+        return
     while px > 20:
         neon_w = neon_image("NEON CABLE", "numbers", px, PINK).width()
         big = int(px * 1.7)
@@ -145,7 +160,10 @@ def render(kind: str):
     if kind == "p":                         # tall cover in the library grid
         _scene(p, w, h, horizon=0.68, sun_r=0.30)
         _title(p, w, w / 2, h * 0.15, 96, lines=True)
-        draw_neon(p, "CABLE TV SYSTEM", "text", 34, CYAN, w / 2, h * 0.93, "cm", flicker=False)
+        from . import paths
+
+        draw_neon(p, "LATE-NIGHT PREMIUM CABLE" if paths.XCABLE else "CABLE TV SYSTEM", "text", 34, CYAN,
+                  w / 2, h * 0.93, "cm", flicker=False)
     elif kind == "":                        # wide capsule (recent games, Big Picture shelves)
         _scene(p, w, h, horizon=0.72, sun_x=0.80, sun_r=0.26)
         p.drawImage(QRectF(30, h * 0.12, 200, 200), _tv_icon(200))

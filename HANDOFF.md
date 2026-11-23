@@ -294,6 +294,28 @@ reading the remote via evdev, which needs input-device permissions).
   channel first") on a box with no channels of its own; `MainWindow._watch` now skips the local checks in
   cable-box mode, pings the head-end (`cablebox.hello`) and explains if it can't be reached.
 
+**XCable edition (23 Nov)**: the owner wanted a second, separate install for a separate library, hard to
+confuse with Neon Cable 42: "premium cable" (black and gold, gentleman's club), groovy bass-led jazz,
+no restrictions by default. Built as an edition of the same code (see CLAUDE.md "Two editions"):
+- `xcable.sh` → `GETSOME_EDITION=xcable`; `paths` gives name/slug/launcher and the XDG folders; desktop
+  entries, Wayland app id, head-end autostart and ports (4252/4253; discovery ignores the other edition),
+  Steam shortcut matching (`paths.LAUNCHER` in Exe) and updater restart all follow it. Settings default
+  `ads_products` = "none" in XCable.
+- Look: `brand.QColor` subclass replaces PySide's QColor in every drawing module (tv/*, gui/theme,
+  schedule_editor, steam_art, desktop icon); hue mapping magenta→gold, cyan→champagne, violet/navy→dark
+  oxblood, yellow→amber, greens→olive gold, whites→ivory (copies of mapped colours aren't re-mapped;
+  PySide can't copy a Python QColor subclass directly, so copies go by value). Stylesheet via
+  `brand.restyle`. Fonts Limelight (numbers/headings) + Playfair Display (text) with lining figures
+  (`QFont.setFeature("lnum")`, Qt ≥ 6.7). Picker usage dots stay green/yellow (meaningful).
+- Music: `beds.JAZZ_GENRES` lounge (walking upright, brushes + swung ride, Rhodes Charleston comping, sax),
+  groove (16th slap bass with pops, funk drums with ghost notes, Rhodes stabs, sax), velvet (slow: lazy
+  upright, rim, Rhodes pad, vibes); bass mixed up front. XCable's guide tracks (`assets_gen.GENRE_TRACKS`,
+  eight invented titles, "Shuffle all (late-night jazz)"), card/intermission beds, up-next jingles and
+  break stings/IDs use them; `ads.intermission_beds` only returns the edition's styles.
+- Art: Steam cover "X" over "CABLE", "XCABLE" logo/banner, TV icon with "X"; tagline "LATE-NIGHT PREMIUM CABLE".
+- Untested by the owner. Possible follow-ups: Art Deco versions of the bumper/intermission scenes (they are
+  recoloured synthwave now), jazzier sign-off clip.
+
 **Remote OK button in Game Mode (23 Nov)**: on the cable box (Bazzite deck edition, Game Mode) OK did nothing:
 gamescope runs apps under XWayland and X11 can't receive key codes above 255 (KEY_OK 352 / KEY_SELECT 353).
 Fix: Settings → Remote control → "Fix the OK button…" runs `remote_helper.py install` as root via

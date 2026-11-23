@@ -20,7 +20,15 @@ scheduling and playback engine and adding a proper GUI and polish.
 ## Hard rules
 - **Never modify FS42 core.** All FS42 access goes through `getsome/fs42.py` (queries) and `station_42.py` subprocesses (builds). If FS42 lacks something, work around it on our side and document it in HANDOFF.md.
 - **Never reproduce copyrighted works**: no melodies from game or film soundtracks, no logos or characters. Music, visuals and jingles are original and generated in code (`synth.py`, `music.py`, `assets_gen.py`, `tv/bumpers.py`).
-- **Fonts**: bundled SIL OFL only (Monoton, Tilt Neon). Assets are generated, never downloaded at runtime.
+- **Fonts**: bundled SIL OFL only (Monoton, Tilt Neon; XCable: Limelight, Playfair Display), with their OFL
+  texts. Assets are generated, never downloaded at runtime.
+- **Two editions, one codebase** (`paths.XCABLE`): `./getsome.sh` = Neon Cable 42; `./xcable.sh` sets
+  `GETSOME_EDITION=xcable` = **XCable**, a separate install for a separate library: own data/config folders
+  (`~/.local/share/xcable`, `~/.config/xcable`), app-menu id, Steam shortcut, head-end ports 4252/4253;
+  black-and-gold "premium cable" look and jazz music; no restrictions or fake product ads by default.
+  Never hard-code the name, folders or launcher: use `paths.APP_NAME`, `APP_SLUG`, `LAUNCHER`. Draw with
+  `brand.QColor` (maps the neon palette to gold/oxblood for XCable, identity for Neon) and run stylesheets
+  through `brand.restyle`; music styles come from `beds.edition_genres()`. Check changes in both editions.
 - **Never touch the user's media**: channels use symlink folders under the FS42 work dir.
 - FS42 returns exit code 0 on failure, so check its output (see `builder._run`).
 - Keep sequential shows' positions across rebuilds: the builder's line-up pass, and `built_hash` / `start_pending`.
@@ -46,7 +54,8 @@ sudo dnf install mpv-libs ffmpeg-free python3     # Fedora
 ## Code map
 ```
 getsome/__main__.py      CLI
-getsome/paths.py         XDG locations
+getsome/paths.py         XDG locations, edition switch (APP_NAME / APP_SLUG / LAUNCHER / XCABLE)
+getsome/brand.py         per-edition look: palette-mapping QColor, restyle() for stylesheets, font files
 getsome/fs42.py          FS42 adapter (channels, segment_at, programmes, titles, builds)
 getsome/model.py         Channel / ShowRef / Block (time blocks) / templates; channels.json
 getsome/channel_writer.py  Channel -> plan (tags) -> FS42 conf with hourly slots + symlink folders

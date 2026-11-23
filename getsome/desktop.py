@@ -79,7 +79,7 @@ def make_icon(dest: Path, size: int = 256) -> None:
     f = QFont(overlays.font("numbers", int(84 * s)))
     p.setFont(f)
     p.setPen(QColor("#ffffff"))
-    p.drawText(scr, Qt.AlignCenter, "42")
+    p.drawText(scr, Qt.AlignCenter, "X" if paths.XCABLE else "42")
     # knobs
     p.setPen(Qt.NoPen)
     for y, c in ((108, "#00f0ff"), (150, "#ffe600")):

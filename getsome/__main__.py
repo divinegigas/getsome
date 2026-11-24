@@ -201,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
 
         chans = model.load()
         if not chans:
-            print(f"No channels yet. Run  ./{paths.LAUNCHER}  to open the setup window.")
+            print(f"No channels yet. Run  {paths.launch_hint()}  to open the setup window.")
         numbers = [c.number for c in chans]
         for c in chans:
             end = fs42.schedule_end(c.name) if c.built_hash else None

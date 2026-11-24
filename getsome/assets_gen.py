@@ -362,7 +362,7 @@ def start_music_background() -> None:
         except (OSError, ValueError):
             pass
     log = open(composer_log(), "a")
-    subprocess.Popen([sys.executable, "-m", "getsome", "compose-music"], cwd=str(paths.APP_DIR.parent),
+    subprocess.Popen(paths.launch_cmd() + ["compose-music"], cwd=str(Path.home()),
                      stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
 
 

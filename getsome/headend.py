@@ -349,11 +349,18 @@ def _signature() -> str:
     import subprocess
 
     parts = []
-    try:
-        parts.append(subprocess.run(["git", "-C", str(paths.APP_DIR.parent), "rev-parse", "HEAD"],
-                                    capture_output=True, text=True, timeout=10).stdout.strip())
-    except (OSError, subprocess.SubprocessError):
-        pass
+    if paths.APPIMAGE:                    # an update replaces the AppImage file
+        try:
+            st = os.stat(paths.APPIMAGE)
+            parts.append(f"{st.st_size}:{st.st_mtime_ns}")
+        except OSError:
+            pass
+    else:
+        try:
+            parts.append(subprocess.run(["git", "-C", str(paths.APP_DIR.parent), "rev-parse", "HEAD"],
+                                        capture_output=True, text=True, timeout=10).stdout.strip())
+        except (OSError, subprocess.SubprocessError):
+            pass
     confs = paths.fs42_work_dir() / "confs"
     try:
         parts += [f"{f.name}:{f.stat().st_mtime_ns}" for f in sorted(confs.glob("*.json"))]
@@ -455,6 +462,8 @@ def serve(port: int = PORT) -> None:
     if server.restart:                     # same command, fresh process (new code, new line-up)
         os.chdir(paths.APP_DIR.parent)
         os.environ["GETSOME_HEADEND_RESTARTS"] = ",".join(str(t) for t in recent + [now])
+        if paths.APPIMAGE:                 # start the (possibly updated) AppImage file, not the old mount
+            os.execv(paths.APPIMAGE, [paths.APPIMAGE, "serve", "--port", str(port)])
         os.execv(sys.executable, [sys.executable, "-m", "getsome", "serve", "--port", str(port)])
 
 
@@ -481,14 +490,7 @@ def pidfile() -> Path:
 
 
 def _code_version() -> str:
-    import subprocess
-
-    try:
-        return subprocess.run(["git", "-C", str(paths.APP_DIR.parent), "rev-parse", "HEAD"],
-                              capture_output=True, text=True, timeout=10).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return ""
-
+    return paths.version()
 
 def ensure_current() -> None:
     """Setup window start: a sharing service still running older code (from before an update) is
@@ -544,7 +546,7 @@ def enable() -> None:
     if not running():
         log_file().parent.mkdir(parents=True, exist_ok=True)
         out = open(log_file(), "a")           # start-up failures (before logging starts) land here too
-        subprocess.Popen(["/bin/bash", str(desktop.launcher()), "serve"], cwd=str(paths.APP_DIR.parent),
+        subprocess.Popen(paths.launch_cmd() + ["serve"], cwd=str(Path.home()),
                          stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
         out.close()
 

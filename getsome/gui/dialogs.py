@@ -919,7 +919,7 @@ class SettingsDialog(QDialog):
         self.launch_tv = QCheckBox("Launch straight into TV mode (skip this setup window)")
         self.launch_tv.setChecked(bool(self.s.get("launch_into_tv")))
         lay.addWidget(self.launch_tv)
-        lay.addWidget(hint(f"You can always reach setup again with:  ./{paths.LAUNCHER} setup"))
+        lay.addWidget(hint(f"You can always reach setup again with:  {paths.launch_hint()} setup"))
         self.remember = QCheckBox("Start on the last channel watched")
         self.remember.setChecked(bool(self.s.get("remember_last_channel", True)))
         lay.addWidget(self.remember)

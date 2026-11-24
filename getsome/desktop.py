@@ -31,7 +31,7 @@ def icon_file() -> Path:
 
 
 def launcher() -> Path:
-    return paths.APP_DIR.parent / paths.LAUNCHER
+    return paths.launcher_path()
 
 
 def installed() -> bool:
@@ -136,6 +136,9 @@ def refresh_if_installed() -> None:
     try:
         if installed() and desktop_file().read_text() != _entry():
             install()
+        # the desktop shortcut too (e.g. after moving from the git copy to the AppImage)
+        if desktop_shortcut_installed() and desktop_shortcut().read_text() != _entry():
+            install_desktop_shortcut()
     except OSError:
         pass
 

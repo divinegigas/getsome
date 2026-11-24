@@ -19,6 +19,38 @@ EDITION = "xcable" if XCABLE else "neon"
 APP_NAME = "XCable" if XCABLE else "Neon Cable 42"     # the name people see
 APP_SLUG = "xcable" if XCABLE else "getsome"           # folder names, app-menu id, Wayland app id
 LAUNCHER = "xcable.sh" if XCABLE else "getsome.sh"
+# Inside an AppImage the runtime sets APPIMAGE to the .AppImage file itself. Anything that must outlive the
+# current window (menus, Steam, the sharing service, restarts) launches that file, not the files inside it.
+APPIMAGE = os.environ.get("APPIMAGE", "")
+
+
+def launcher_path() -> Path:
+    """What menus, Steam and autostart should run: the AppImage, or the checkout's launcher script."""
+    return Path(APPIMAGE) if APPIMAGE else APP_DIR.parent / LAUNCHER
+
+
+def launch_hint() -> str:
+    """How the owner starts it from a terminal, for messages: ./getsome.sh or ./NeonCable42-x86_64.AppImage."""
+    return f"./{Path(APPIMAGE).name}" if APPIMAGE else f"./{LAUNCHER}"
+
+
+def launch_cmd() -> list[str]:
+    """argv prefix to start this program as a fresh, independent process."""
+    return [APPIMAGE] if APPIMAGE else ["/bin/bash", str(APP_DIR.parent / LAUNCHER)]
+
+
+def version() -> str:
+    """The AppImage's release (baked in at build time), or the checkout's git commit."""
+    v = os.environ.get("GETSOME_VERSION", "").strip()
+    if v:
+        return v
+    import subprocess
+
+    try:
+        return subprocess.run(["git", "-C", str(APP_DIR.parent), "rev-parse", "HEAD"], capture_output=True,
+                              text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
 APP_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = APP_DIR / "assets"
 FONTS_DIR = ASSETS_DIR / "fonts"

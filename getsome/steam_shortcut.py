@@ -144,7 +144,8 @@ def shortcut_appid(exe: str, name: str) -> int:
 def _is_ours(entry: dict) -> bool:
     exe = str(entry.get("Exe") or entry.get("exe") or "")
     name = str(entry.get("AppName") or entry.get("appname") or "")
-    return paths.LAUNCHER in exe or name.strip().lower() == paths.APP_NAME.lower()
+    me = paths.launcher_path().name
+    return (paths.LAUNCHER in exe or me in exe or name.strip().lower() == paths.APP_NAME.lower())
 
 
 def _entry_appid(entry: dict) -> int:
@@ -241,6 +242,13 @@ def add_to_steam() -> str:
         if mine:
             appid = _entry_appid(mine[1])
             refreshed += 1
+            if mine[1].get("Exe") != exe:      # e.g. from the old checkout to the AppImage: same shortcut, new target
+                mine[1]["Exe"], mine[1]["StartDir"] = exe, start
+                if f.exists():
+                    shutil.copy2(f, f.with_name("shortcuts.vdf.before-neon-cable-42"))
+                tmp = f.with_name("shortcuts.vdf.tmp")
+                tmp.write_bytes(vdf_dump(data))
+                os.replace(tmp, f)
         else:
             appid = shortcut_appid(exe, paths.APP_NAME)
             icon = cfg / "grid" / f"{appid}_icon.png"

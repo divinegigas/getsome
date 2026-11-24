@@ -2,7 +2,7 @@
 
 The product is called **Neon Cable 42** (`paths.APP_NAME`); "GetSome" was a placeholder. Internals
 (package `getsome`, `getsome.sh`, `~/.local/share/getsome`, `~/.config/getsome`, repo) keep the old
-name until the AppImage move (see HANDOFF). Never show "GetSome" in anything the owner sees.
+name for good (decided at the AppImage move: the AppImage and a git copy share the same data folders). Never show "GetSome" in anything the owner sees.
 
 Read `HANDOFF.md` first for the current state, known issues and next steps.
 
@@ -50,6 +50,10 @@ sudo dnf install mpv-libs ffmpeg-free python3     # Fedora
 ./getsome.sh tv         # TV mode (--windowed, --channel N)
 ./getsome.sh demo | list | build [NAME…] | upkeep | scan FOLDER | compose-music
 ```
+- **AppImages** (what the owner runs from now on): `NeonCable42-x86_64.AppImage`, `XCable-x86_64.AppImage`
+  from the repo's GitHub Releases. Built by `.github/workflows/appimage.yml` (push a tag `vYYYY.MM.DD`;
+  same-day extras `vYYYY.MM.DD.2`) with `packaging/build_appimage.sh`; see HANDOFF "AppImages". Never
+  hard-code `getsome.sh`: use `paths.launcher_path()` / `launch_cmd()` / `launch_hint()`.
 - **User data:** `~/.local/share/getsome/` (`channels.json`, `library.json`, `movies.json`, `fs42/` work dir with `confs/`, `runtime/`, `catalog/`, `overrides/`, `logs/`).
 - **Settings and keymap:** `~/.config/getsome/settings.json` and `keymap.json`.
 - **For isolated testing:** `GETSOME_DATA_DIR=… XDG_CONFIG_HOME=…`. Headless: `Xvfb :99` + `DISPLAY=:99` (in the sandbox, llvmpipe sometimes renders mpv black, and Xvfb sometimes dies between long jobs; restart it).
@@ -72,13 +76,14 @@ getsome/steam_shortcut.py  "Add to Steam" (shortcuts.vdf, binary VDF) + startup 
 getsome/headend.py       share channels on the home network (HTTP 4242 + UDP 4243 discovery, pairing, Range files)
 getsome/cablebox.py      watch a head-end's channels: reroutes TV mode's fs42/ads/artwork/model calls, URLs for mpv
 getsome/ads.py           commercial pool: invented ads, IDs, show promos, own folder; per-channel links
-getsome/updater.py       Settings > Check for updates (git pull + restart)
+getsome/updater.py       Settings > Check for updates: git pull + restart, or (AppImage) newest GitHub Release, sha256, swap, restart
 getsome/media_index.py   TV/movie NFO parsing, scans, link folders
 getsome/library.py       library folders + scan caches
 getsome/assets_gen.py    runtime media, up-next clips, guide-music composer process
 getsome/synth.py, music.py   synthesizer + composer (10 original guide tracks)
 getsome/beds.py          short original beds: jrpg, metal, rock, punk, reggae, ska (cards, ads, intermissions)
 getsome/gui/             setup window (theme, main_window, channel_editor, schedule_editor, dialogs, workers)
+packaging/               build_appimage.sh, AppRun, excludelist (AppImage build); .github/workflows/appimage.yml publishes
 getsome/tv/              TV mode (app, mpv_widget, overlays, bumpers, intermissions, ads_paint, art_paint, guide, menu, awake, hiss, keys, gamepad)
 ```
 
@@ -101,7 +106,9 @@ record of what they watch)
   and may be documented.
 
 ## Git
-Work on branch `claude/cable-tv-gui-review-gdkexf` (the only branch) and push there. Commit in logical steps
+Work on branch `claude/cable-tv-gui-review-gdkexf` (the only branch) and push there. A pushed commit reaches the owner
+only after a **release**: tag it (`git tag vYYYY.MM.DD && git push origin vYYYY.MM.DD`) so the workflow
+builds and publishes both AppImages (a git checkout still updates from the branch directly). Commit in logical steps
 with clear, plain messages: they are the "What's new" list the owner sees in Settings → Check for updates.
 
 **Updater and history rewrites** (`updater.py`): Check for updates fetches, and if the local HEAD is an

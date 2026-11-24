@@ -2,10 +2,11 @@
 
 **Name:** the owner renamed the product to **Neon Cable 42**. Every visible string uses
 `paths.APP_NAME` or the literal name (window titles, logo, guide, ads, teletext "NC42 TEXT", app-menu
-entry, notifications, icon shows "42"). Internal names stay `getsome` for now: the package, `getsome.sh`,
-env vars `GETSOME_*`, `~/.local/share/getsome` (FS42 schedules and catalog store absolute paths under it,
-so moving it would force full rebuilds) and `~/.config/getsome`. Rename those during the AppImage move,
-with a one-time migration (move the folders, then rebuild every channel).
+entry, notifications, icon shows "42"). Internal names stay `getsome`: the package, `getsome.sh`,
+env vars `GETSOME_*`, `~/.local/share/getsome` and `~/.config/getsome` (XCable: `xcable`). **Decided at the
+AppImage move (24 Nov): no rename.** FS42 schedules and catalogs store absolute paths under the data folder,
+so moving it would force full rebuilds; keeping it means the AppImage and a git checkout share the same
+channels and settings with no migration (the owner keeps the old git install until happy with the AppImage).
 
 _State at the end of the third session (19 Nov 2026), branch `claude/cable-tv-gui-review-gdkexf`. A fresh
 session should start from the prompt in `docs/NEXT_SESSION_PROMPT.md`._
@@ -20,7 +21,7 @@ TV mode. See `CLAUDE.md` for the brief and the ground rules, and
 | Original plan phase | Status |
 |---|---|
 | 1 TV-mode MVP | ✅ done, confirmed by the owner on Fedora (picture, sound, static, live tune-in) |
-| 2 AppImage for Bazzite | ⏸ **deferred by the owner** ("Fedora first") |
+| 2 AppImage for Bazzite | 🔨 **built 24 Nov** (two files, GitHub Releases, own updater); see "AppImages" below · **waiting on the owner's first test** |
 | 3 Setup GUI | ✅ done |
 | 4 Time blocks + broadcast hours + off-air modes | ✅ done · not yet reported on by the owner |
 | 5 Guide, overrides, settings, key-remap screen | ✅ guide, overrides and settings · ❌ remap screen (JSON file only) |
@@ -551,31 +552,50 @@ the new-episode check, every-episode rotation, schedule upkeep, update button, e
      TV mode (Qt Gamepad / SDL) would be the next step after that.
 4. **Commercials follow-ups**: facts ticker on movie-channel intermissions, per-show "no breaks"
    toggle, avoid repeating an ad within one break, more product scripts.
-5. **AppImage: owner's privacy requirements (agreed 19 Nov, must be done as part of the AppImage release):**
-   * **Fully offline.** Audit before shipping: no network code anywhere except the update check, and that
-     only when the owner presses the button (no automatic check, no telemetry, no crash reporting). Bundle
-     every Python package so first run needs no pip download. Grep the bundle for `urllib`, `requests`,
-     `socket`, `http`, and check FS42's code paths we use (we never start its web server).
-   * **Scrub the owner's personal details from the repo docs**: CLAUDE.md "Owner's setup" was already made
-     generic (19 Nov: drive path, user name and hardware removed); re-check, plus HANDOFF.md "Owner
-     feedback" and any notes about their library or viewing.
-     Keep only how the app works. Note that the old text stays in git history and on GitHub (the repo is
-     **public**) unless history is rewritten; offer that, or the owner can make the repo private.
-     Don't add new personal details to the docs from now on.
-   * If the repo is made private, the git updater needs the owner's computer signed in to GitHub
-     (`gh auth login` + `gh auth setup-git`); `updater._git` now says so on auth errors. The AppImage
-     updater must handle this too (or download releases another way).
-6. **AppImage** (deferred phase 2; owner wants it after testing commercials): bundle CPython, PySide6,
-   libmpv, ffmpeg and FS42; static runtime; test on Bazzite. **Must include a real update button** (the
-   current one is git-based and won't work inside an AppImage): e.g. check a release feed, download the
-   new AppImage next to the old one, verify it, swap and restart (or AppImageUpdate/zsync). Also do the
-   internal getsome → neon-cable-42 rename with the data-folder migration then.
+5. **AppImages: owner's test of the first release** (see "AppImages" below). Then, once the owner is
+   happy, they can delete `~/getsome` (the git copy); the data folders stay.
 
 **Long-term goals (owner's wishlist, not scheduled):**
 - **Plasma Bigscreen integration** (KDE's TV/10-foot interface; the owner hasn't set it up yet): appear
   as a Bigscreen app with a proper tile, remote/gamepad navigation in the setup window, maybe launching
   straight into TV mode.
 - Steam Big Picture / Steam Deck-style living-room polish, building on item 3.
+
+## AppImages (24 Nov)
+Two files, one per edition: **NeonCable42-x86_64.AppImage** and **XCable-x86_64.AppImage**, published as
+**GitHub Releases** of this repo by `.github/workflows/appimage.yml` (push a tag `vYYYY.MM.DD` or "Run
+workflow" in the Actions tab with a version). The release notes are the commit subjects since the previous
+tag, and they are the "What's new" list in the AppImage's updater.
+- **Build**: `packaging/build_appimage.sh <neon|xcable|both> [out]` on Ubuntu 24.04 (glibc 2.39; Fedora and
+  Bazzite are newer). Inside: python-build-standalone 3.13 with every requirement (PySide6-Essentials
+  instead of the full PySide6), our code, FS42 (minus docs/tests), ffmpeg/ffprobe and libmpv from Ubuntu
+  with the libraries they need (collected through ldd; never glibc, GL/EGL/Vulkan/VA drivers, X11/Wayland,
+  PulseAudio/PipeWire/ALSA, D-Bus, udev: see `EXCL` in the script and `packaging/excludelist`).
+  `packaging/AppRun` sets `GETSOME_EDITION`, `GETSOME_VERSION` (the tag), `GETSOME_LIBMPV`,
+  `GETSOME_FS42_DIR`, `PYTHONNOUSERSITE` and keeps the Steam fixes from `getsome.sh`. About 690 MB
+  unpacked, roughly a third of that as an AppImage. Local test without appimagetool:
+  `PYTHON_DIR=<relocatable python> packaging/build_appimage.sh neon` then `build/AppDir-neon/AppRun list`.
+  The build exports `PYTHONNOUSERSITE=1` so pip can't skip packages already in the build machine's home
+  folder (this hid a missing `requests`, which FS42 imports at start-up).
+- **In the code**: `paths.APPIMAGE` (set by the AppImage runtime), `paths.launcher_path()` (what menus,
+  Steam, autostart run), `paths.launch_cmd()` (start a fresh copy: head-end service, music composer),
+  `paths.launch_hint()` (for messages), `paths.version()` (tag, or git HEAD). `getsome/__init__.py` points
+  python-mpv at `GETSOME_LIBMPV`. Moving from the git copy is automatic: the app-menu entry and desktop
+  shortcut are rewritten on start (`desktop.refresh_if_installed`), the sharing service restarts from the
+  AppImage because its version differs (`headend.ensure_current`, which also rewrites the autostart
+  entry), and Settings → "Add to Steam" (with Steam closed) re-points the existing shortcut.
+- **Updater, AppImage mode** (`updater.py`): reads the repo's releases from the GitHub API, picks the newest
+  with this edition's file, downloads it and its `.sha256`, checks the hash, replaces the AppImage in place
+  and restarts it. Uses the computer's own certificate list (Fedora keeps it in `/etc/pki`, which the
+  bundled OpenSSL doesn't look in), else certifi's. The git checkout keeps the git updater.
+- **Offline audit (24 Nov)**: network code exists only in `updater.py` (only when "Check for updates" is
+  pressed), `headend.py` (home network, only when sharing is switched on) and `cablebox.py` (only in cable-box
+  mode, talking to the head-end). FS42 imports its web server module at start-up (hence `requests`) but only
+  runs it with `--server` or no arguments; we always pass arguments. Its TMDB lookups live in that server.
+- **Tested here**: AppDirs of both editions: `list`, demo build of three channels through FS42, setup
+  window (XCable look and fonts), bundled libmpv decoding frames. TV mode in the sandbox draws black with
+  both the git copy and the AppImage (llvmpipe, see Known issues), so the picture on real hardware is the
+  owner's test. Not testable here: FUSE mount, Steam launch, Bazzite.
 
 ## How to verify quickly (dev)
 ```bash

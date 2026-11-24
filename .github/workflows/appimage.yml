@@ -1,0 +1,87 @@
+# Builds NeonCable42-x86_64.AppImage and XCable-x86_64.AppImage and publishes them as a GitHub Release,
+# which is where the AppImages' "Check for updates" looks.
+#
+# Start it by pushing a tag (git tag v2026.11.24 && git push origin v2026.11.24), or from the Actions tab
+# ("Run workflow", give a version like v2026.11.24). The release notes are the commit messages since the
+# previous release: they are the "What's new" list the owner sees.
+name: AppImages
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag for the release, e.g. v2026.11.24"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: appimage
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Build tools and the parts that go inside
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg libmpv2 patchelf squashfs-tools file desktop-file-utils \
+            libegl1 libgl1 libfontconfig1 libxkbcommon0 libdbus-1-3
+          mkdir -p "$RUNNER_TEMP/tools"
+          # self-contained Python (python-build-standalone): newest 3.13 build
+          gh release download --repo astral-sh/python-build-standalone \
+            -p 'cpython-3.13.*-x86_64-unknown-linux-gnu-install_only.tar.gz' -D "$RUNNER_TEMP/tools"
+          ls "$RUNNER_TEMP/tools"
+          # appimagetool (its runtime needs no libfuse2 on the user's computer)
+          gh release download continuous --repo AppImage/appimagetool -p 'appimagetool-x86_64.AppImage' -D "$RUNNER_TEMP/tools"
+          chmod +x "$RUNNER_TEMP/tools/appimagetool-x86_64.AppImage"
+
+      - name: Build both AppImages
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          export PYTHON_TARBALL="$(ls "$RUNNER_TEMP"/tools/cpython-*.tar.gz | head -1)"
+          export APPIMAGETOOL="$RUNNER_TEMP/tools/appimagetool-x86_64.AppImage"
+          packaging/build_appimage.sh both dist
+          ls -la dist
+
+      - name: Smoke test (starts, sees FieldStation42, decodes video with the bundled libmpv)
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          for f in dist/NeonCable42-x86_64.AppImage dist/XCable-x86_64.AppImage; do
+            export GETSOME_DATA_DIR="$RUNNER_TEMP/data-$(basename $f)" XDG_CONFIG_HOME="$RUNNER_TEMP/cfg-$(basename $f)"
+            "$f" --help | head -3
+            "$f" list
+          done
+          d=build/AppDir-neon
+          ffmpeg -loglevel error -f lavfi -i testsrc=duration=2:size=320x240:rate=25 "$RUNNER_TEMP/t.mp4"
+          PYTHONNOUSERSITE=1 GETSOME_LIBMPV=$d/usr/lib/libmpv.so.2 PYTHONPATH=$d/usr/app $d/usr/python/bin/python3 -c "
+          import getsome, mpv
+          p = mpv.MPV(vo='image', ao='null', vo_image_outdir='$RUNNER_TEMP', frames=1)
+          p.play('$RUNNER_TEMP/t.mp4'); p.wait_for_playback(); print('libmpv', p.mpv_version, 'decodes')"
+
+      - name: Publish the release
+        run: |
+          prev="$(git tag --list 'v*' --sort=-creatordate | grep -vx "$VERSION" | head -1 || true)"
+          {
+            if [ -n "$prev" ]; then git log --no-merges --format='- %s' "$prev..HEAD"
+            else echo "- First AppImage release: one file per edition, everything included, works offline"; fi
+          } > notes.md
+          cat notes.md
+          gh release create "$VERSION" --target "$GITHUB_SHA" --title "$VERSION" --notes-file notes.md \
+            dist/NeonCable42-x86_64.AppImage dist/NeonCable42-x86_64.AppImage.sha256 \
+            dist/XCable-x86_64.AppImage dist/XCable-x86_64.AppImage.sha256

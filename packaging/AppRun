@@ -1,0 +1,29 @@
+#!/bin/bash
+# AppImage entry point for Neon Cable 42 / XCable (build_appimage.sh fills in @EDITION@ and @NAME@).
+# Everything the app needs is inside: a self-contained Python with the app's packages, FieldStation42,
+# ffmpeg/ffprobe and libmpv. Channels, settings and media stay where they always were
+# (~/.local/share/<edition>, ~/.config/<edition>), shared with a git checkout of the app.
+HERE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+
+export GETSOME_EDITION="@EDITION@"
+export GETSOME_APP_NAME="@NAME@"
+export GETSOME_VERSION="$(cat "$HERE/VERSION" 2>/dev/null)"
+export GETSOME_LIBMPV="$HERE/usr/lib/libmpv.so.2"
+export GETSOME_FS42_DIR="$HERE/usr/app/vendor/FieldStation42"
+export PATH="$HERE/usr/bin:$PATH"
+export PYTHONPATH="$HERE/usr/app"
+export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
+unset PYTHONHOME
+
+# Started from Steam (a non-Steam shortcut, Big Picture, Game Mode): the same fixes as getsome.sh
+if [ -n "${SteamGameId:-}${SteamAppId:-}${SteamOverlayGameId:-}${SteamClientLaunch:-}" ] || [ "${SteamEnv:-}" = 1 ]; then
+  export GETSOME_FROM_STEAM=1
+  if [ -n "${LD_PRELOAD:-}" ]; then
+    LD_PRELOAD="$(printf '%s' "$LD_PRELOAD" | tr ': ' '\n\n' | grep -v gameoverlayrenderer | paste -sd: - || true)"
+    export LD_PRELOAD
+  fi
+  if [ -n "${SYSTEM_LD_LIBRARY_PATH+x}" ]; then export LD_LIBRARY_PATH="$SYSTEM_LD_LIBRARY_PATH"; fi
+fi
+
+cd "$HOME" || cd /
+exec "$HERE/usr/python/bin/python3" -m getsome "$@"

@@ -40,6 +40,7 @@ class Overlay(ctx: Context) : View(ctx) {
     var card: Card? = null
 
     var locked = false
+    var lockOpaque = false              // the blur filter isn't available: hide the picture instead
     var lockNote = ""
 
     var controlsUntil = 0L
@@ -285,7 +286,7 @@ class Overlay(ctx: Context) : View(ctx) {
 
     private fun drawLocked(c: Canvas, w: Float, h: Float) {
         p.reset()
-        p.color = 0x8C000000.toInt()
+        p.color = if (lockOpaque) 0xF5000000.toInt() else 0x8C000000.toInt()
         c.drawRect(0f, 0f, w, h, p)
         val r = RectF(w * 0.2f, h * 0.38f, w * 0.8f, h * 0.38f + 200 * u)
         panel(c, r, Brand.ACCENT)

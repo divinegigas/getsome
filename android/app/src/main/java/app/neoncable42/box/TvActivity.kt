@@ -432,7 +432,8 @@ class TvActivity : Activity(), Player.Listener {
         overlay.locked = locked
         val r = ch?.let { restricted[it.number] }
         overlay.lockNote = if (locked && r != null && r.mode == "hours" && r.from != r.to) "Opens by itself at ${hourText(r.from)}" else ""
-        player.setFilter(if (locked) BLUR_VF else "")
+        // blurred like the desktop; if this phone's player can't blur, the veil hides the picture instead
+        overlay.lockOpaque = !player.setFilter(if (locked) BLUR_VF else "")
         player.setMute(locked)
         if (locked) tones.tone(false)
         overlay.invalidate()

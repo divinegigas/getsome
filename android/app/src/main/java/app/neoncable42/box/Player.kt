@@ -79,8 +79,9 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
 
     fun setMute(on: Boolean) = mpv.setPropertyBoolean("mute", on)
 
-    /** Video filters (the restricted-channel blur). Filters need frames in memory: copy-back decoding. */
-    fun setFilter(vf: String) {
+    /** Video filters (the restricted-channel blur). Filters need frames in memory: copy-back decoding.
+     *  Returns false if mpv refused the filter (Android builds of ffmpeg carry few filters). */
+    fun setFilter(vf: String): Boolean {
         val want = if (vf.isEmpty()) HWDEC else "mediacodec-copy"
         if (want != hwdec) {
             mpv.setPropertyString("hwdec", want)
@@ -91,6 +92,7 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
         } catch (e: Exception) {
             Log.w(TAG, "vf $vf: $e")
         }
+        return vf.isEmpty() || !mpv.getPropertyString("vf").isNullOrEmpty()
     }
 
     /** Picture shape, as the desktop's PICTURE menu: normal, zoom (fill, no bars), stretch. */

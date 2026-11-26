@@ -139,6 +139,7 @@ class TvActivity : Activity(), Player.Listener {
         overlay.invalidate()
         loadInfo(first = true)
         ui.postDelayed(tick, 30_000)
+        if (overlay.info != null) ui.postDelayed(infoTick, 1000)
     }
 
     override fun onStop() {
@@ -377,6 +378,7 @@ class TvActivity : Activity(), Player.Listener {
         val wait = 350 - (SystemClock.uptimeMillis() - tuneStartedAt)
         ui.postDelayed({
             if (tk == token && staticShown) {
+                lastTuneMs = SystemClock.uptimeMillis() - tuneStartedAt
                 endStatic()
                 showBanner()
             }
@@ -684,7 +686,19 @@ class TvActivity : Activity(), Player.Listener {
     }
 
     // ================================================================ menu
-    private val menuKeys = listOf("audio", "subs", "picture", "ads", "pc", "close")
+    private val menuKeys = listOf("audio", "subs", "picture", "ads", "info", "pc", "close")
+    private var lastTuneMs = 0L
+
+    /** INFO: a small readout (top left) of how playback is going, refreshed every second. */
+    private val infoTick: Runnable = object : Runnable {
+        override fun run() {
+            if (!running || overlay.info == null) return
+            overlay.info = listOf("Channel change: " + if (lastTuneMs > 0) String.format(Locale.US, "%.1f s", lastTuneMs / 1000.0) else "-") +
+                runCatching { player.stats() }.getOrDefault(emptyList())
+            overlay.invalidate()
+            ui.postDelayed(this, 1000)
+        }
+    }
     private val zooms = listOf("normal" to "Normal", "zoom" to "Zoom (fill, no bars)", "stretch" to "Stretch to fill")
 
     private fun trackLabel(t: Player.Track): String {
@@ -703,6 +717,7 @@ class TvActivity : Activity(), Player.Listener {
             Overlay.MenuRow("SUBTITLES", s?.let { trackLabel(it) } ?: "Off", active = subs.isNotEmpty()),
             Overlay.MenuRow("PICTURE", zooms.firstOrNull { it.first == prefs.zoom }?.second ?: "Normal"),
             Overlay.MenuRow("ADS", if (prefs.adVolume == 0) "Silent" else "${prefs.adVolume}%", slider = prefs.adVolume / 100f),
+            Overlay.MenuRow("INFO", if (overlay.info != null) "Shown (top left)" else "Hidden"),
             Overlay.MenuRow("FROM", prefs.pcName.ifEmpty { prefs.host } + "   (▸ pair again)"),
             Overlay.MenuRow("CLOSE", "", active = false),
         )
@@ -735,6 +750,13 @@ class TvActivity : Activity(), Player.Listener {
             "ads" -> {
                 prefs.adVolume = (prefs.adVolume + d * 10).coerceIn(0, 100)
                 applyVolume()
+            }
+            "info" -> {
+                ui.removeCallbacks(infoTick)
+                if (overlay.info == null) {
+                    overlay.info = emptyList()
+                    infoTick.run()
+                } else overlay.info = null
             }
             "pc" -> {
                 startActivity(Intent(this, PairActivity::class.java).putExtra(PairActivity.FROM_TV, true))
@@ -946,7 +968,8 @@ class TvActivity : Activity(), Player.Listener {
     }
 
     companion object {
-        private const val MAX_DRIFT = 3.0
+        // catch up only when well behind: each catch-up is another seek over Wi-Fi (more waiting)
+        private const val MAX_DRIFT = 6.0
         private const val END_ERROR = 4          // MPV_END_FILE_REASON_ERROR
         // as the desktop's restricted-channel blur, made from scaling only (always in Android builds of ffmpeg)
         private const val BLUR_VF = "lavfi=[scale=48:-2:flags=area,scale=960:-2:flags=bicubic]"

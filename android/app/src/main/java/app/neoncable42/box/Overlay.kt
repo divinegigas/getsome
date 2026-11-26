@@ -57,6 +57,8 @@ class Overlay(ctx: Context) : View(ctx) {
     var menu: List<MenuRow>? = null
     var menuSel = 0
 
+    var info: List<String>? = null     // INFO readout (menu), top left
+
     var message = ""
     var messageUntil = 0L
 
@@ -114,6 +116,7 @@ class Overlay(ctx: Context) : View(ctx) {
         guide?.let { drawGuide(c, w, h, it) }
         menu?.let { drawMenu(c, w, h, it) }
         pad?.let { drawPad(c, w, h, it) }
+        info?.let { if (it.isNotEmpty()) drawInfo(c, it) }
         if (now < messageUntil) drawMessage(c, w, h)
 
         val next = listOf(numberUntil, bannerUntil, controlsUntil, messageUntil).filter { it > now }.minOrNull()
@@ -428,6 +431,16 @@ class Overlay(ctx: Context) : View(ctx) {
             y += rh
         }
         text(c, "Tap ◂ ▸ to change", r.left + 70 * u, r.bottom - 26 * u, 28 * u, Brand.DIM)
+    }
+
+    private fun drawInfo(c: Canvas, lines: List<String>) {
+        val size = 26 * u
+        val lh = size * 1.35f
+        val r = RectF(30 * u, 30 * u, 30 * u + 880 * u, 30 * u + 30 * u + lines.size * lh)
+        p.reset(); p.color = 0xB4000000.toInt(); c.drawRect(r, p)
+        for ((i, s) in lines.withIndex())
+            text(c, ellipsize(s, size, r.width() - 40 * u), r.left + 20 * u, r.top + 15 * u + (i + 1) * lh - size * 0.3f,
+                size, if (i == 0) Brand.HILITE else 0xFFFFFFFF.toInt())
     }
 
     private fun drawMessage(c: Canvas, w: Float, h: Float) {

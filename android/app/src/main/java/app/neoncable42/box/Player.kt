@@ -19,9 +19,12 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
 
     private val main = Handler(Looper.getMainLooper())
     private val mpv: MPVLib = MPVLib.create(ctx) ?: throw IllegalStateException("the video player (libmpv) did not load")
-    private var hwdec = HWDEC
+    private var vfNow = ""
 
     init {
+        // "fast": plain bilinear scaling and no extra GPU passes. Phone GPUs struggle with mpv's default
+        // high-quality scalers on a big picture (the desktop has the power to spare).
+        mpv.setOptionString("profile", "fast")
         val o = mapOf(
             "vo" to "gpu", "gpu-context" to "android", "opengl-es" to "yes",
             "hwdec" to HWDEC, "hwdec-codecs" to "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1",
@@ -82,11 +85,8 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
     /** Video filters (the restricted-channel blur). Filters need frames in memory: copy-back decoding.
      *  Returns false if mpv refused the filter (Android builds of ffmpeg carry few filters). */
     fun setFilter(vf: String): Boolean {
-        val want = if (vf.isEmpty()) HWDEC else "mediacodec-copy"
-        if (want != hwdec) {
-            mpv.setPropertyString("hwdec", want)
-            hwdec = want
-        }
+        if (vf == vfNow) return vf.isEmpty() || !mpv.getPropertyString("vf").isNullOrEmpty()
+        vfNow = vf                               // setting it at all rebuilds the video chain: only on change
         try {
             mpv.setPropertyString("vf", vf)
         } catch (e: Exception) {
@@ -99,6 +99,24 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
     fun setZoom(mode: String) {
         mpv.setPropertyDouble("panscan", if (mode == "zoom") 1.0 else 0.0)
         mpv.setPropertyBoolean("keepaspect", mode != "stretch")
+    }
+
+    /** For the INFO readout: how the phone is coping (decoder, dropped frames, buffered seconds). */
+    fun stats(): List<String> {
+        fun s(k: String) = runCatching { mpv.getPropertyString(k) }.getOrNull().orEmpty()
+        fun d(k: String) = runCatching { mpv.getPropertyDouble(k) }.getOrNull()
+        val w = s("video-params/w")
+        val h = s("video-params/h")
+        val dec = s("hwdec-current").ifEmpty { "no" }
+        return listOf(
+            "Video: ${s("video-codec").substringBefore(' ').ifEmpty { "-" }}  ${if (w.isNotEmpty()) "${w}x$h" else ""}" +
+                "  ${d("container-fps")?.let { String.format(Locale.US, "%.0f fps", it) } ?: ""}",
+            "Decoder: " + if (dec == "no") "software (phone's processor)" else "hardware ($dec)",
+            "Dropped frames: ${s("frame-drop-count").ifEmpty { "0" }} shown, ${s("decoder-frame-drop-count").ifEmpty { "0" }} decoded",
+            "Buffered: ${d("demuxer-cache-duration")?.let { String.format(Locale.US, "%.0f s", it) } ?: "-"}" +
+                if (mpv.getPropertyBoolean("paused-for-cache") == true) "  (waiting for the network)" else "",
+            "Audio: ${s("audio-codec-name").ifEmpty { "-" }}",
+        )
     }
 
     data class Track(val type: String, val id: Int, val lang: String, val title: String, val codec: String,
@@ -147,7 +165,9 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
 
     companion object {
         private const val TAG = "CableBox"
-        const val HWDEC = "mediacodec,mediacodec-copy"
+        // with vo=gpu, mpv can only use the phone's video decoder in copy-back mode ("mediacodec" alone
+        // needs vo=mediacodec_embed, which can't draw subtitles); trying it first only wasted time per file
+        const val HWDEC = "mediacodec-copy"
         const val END_ERROR = 4                  // as MPV_END_FILE_REASON_ERROR
         private fun fmt(v: Double) = String.format(Locale.US, "%.3f", v)
     }

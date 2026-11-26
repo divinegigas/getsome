@@ -41,8 +41,9 @@ class HeadEnd(val host: String, val port: Int, private val token: String) {
             if (code >= 400) throw IOException(runCatching { JSONObject(txt).optString("error") }.getOrNull() ?: "HTTP $code")
             val r = JSONObject(txt)
             return if (r.isNull("result")) null else r.get("result")
-        } finally {
+        } catch (e: IOException) {
             c.disconnect()
+            throw e
         }
     }
 

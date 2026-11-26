@@ -592,6 +592,13 @@ and `xcable` (app.xcable.box, 4252/4253), own name, icon (drawn by `desktop.make
 - **Signing**: no repository secret yet (ANDROID_KEYSTORE_B64 + ANDROID_KEYSTORE_PASSWORD), so each
   build has a throwaway key and an update needs uninstall + reinstall (and pairing again). Adding the
   secrets was left to the owner's decision.
+- **Lag (owner, 26 Nov: "much more lag than Linux to Linux")**: first fixes, unmeasured on a device:
+  mpv `profile=fast` (default scalers are heavy for phone GPUs), `hwdec=mediacodec-copy` directly
+  (plain `mediacodec` needs vo=mediacodec_embed, so each file wasted a failed attempt), the vf is only
+  set when it changes (setting it rebuilt the video chain on every tune), keep-alive HTTP to the PC,
+  MAX_DRIFT 3 → 6 s (fewer catch-up seeks). Menu → INFO shows channel-change time, decoder, dropped
+  frames and buffered seconds: ask the owner for those numbers if it still lags. If the decoder says
+  software, the next step is vo=mediacodec_embed (zero-copy, but subtitles then need another route).
 - **Not done yet**: the desktop's painted look for ads/cards/up-next, guide music, zoom/sides parity
   (only normal/zoom/stretch), in-app update check, Android TV launcher banner.
 

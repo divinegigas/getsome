@@ -1,0 +1,72 @@
+# The cable-box app for Android phones and tablets (android/): two editions, two processor families.
+# Runs on every push that touches android/ (a test build you can download from the run's page), and is
+# called by appimage.yml so every release carries the APKs too.
+#
+# Signing: with the repository secrets ANDROID_KEYSTORE_B64 (base64 of a .jks) and
+# ANDROID_KEYSTORE_PASSWORD, every build is signed with the same key, so a new APK installs over the old
+# one. Without them the build uses a throwaway key (to update, uninstall the old app first).
+name: Android
+
+on:
+  push:
+    branches: [claude/cable-tv-gui-review-gdkexf]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    env:
+      VERSION_NAME: ${{ inputs.version || 'test' }}
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/box.jks"
+            echo "KEYSTORE=$RUNNER_TEMP/box.jks" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=$KS_PW" >> "$GITHUB_ENV"
+            echo "signing with the release key"
+          else
+            echo "::warning::No signing key secret: this build uses a throwaway key"
+          fi
+
+      - name: Build
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: Name the files
+        run: |
+          mkdir -p apk
+          for ed in neon xcable; do
+            name=$([ $ed = xcable ] && echo XCable || echo NeonCable42)
+            for abi in arm64-v8a armeabi-v7a; do
+              f=$(ls android/app/build/outputs/apk/$ed/release/*-$abi-release*.apk | head -1)
+              short=$([ $abi = arm64-v8a ] && echo arm64 || echo arm32)
+              cp "$f" "apk/$name-Box-$short.apk"
+            done
+          done
+          (cd apk && sha256sum *.apk > SHA256SUMS.txt && ls -la)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: apk/
+          retention-days: 30

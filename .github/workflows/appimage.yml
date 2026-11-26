@@ -1,5 +1,6 @@
-# Builds NeonCable42-x86_64.AppImage and XCable-x86_64.AppImage and publishes them as a GitHub Release,
-# which is where the AppImages' "Check for updates" looks.
+# Builds NeonCable42-x86_64.AppImage and XCable-x86_64.AppImage, plus the Android cable-box apps
+# (android.yml), and publishes them all as a GitHub Release, which is where the AppImages'
+# "Check for updates" looks.
 #
 # Start it by pushing a tag (git tag v2026.11.24 && git push origin v2026.11.24), or from the Actions tab
 # ("Run workflow", give a version like v2026.11.24). The release notes are the commit messages since the
@@ -74,8 +75,37 @@ jobs:
           p = mpv.MPV(vo='image', ao='null', vo_image_outdir='$RUNNER_TEMP', frames=1)
           p.play('$RUNNER_TEMP/t.mp4'); p.wait_for_playback(); print('libmpv', p.mpv_version, 'decodes')"
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimages
+          path: dist/
+          retention-days: 7
+
+  apk:
+    uses: ./.github/workflows/android.yml
+    with:
+      version: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+    secrets: inherit
+
+  publish:
+    needs: [build, apk]
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
       - name: Publish the release
         run: |
+          ls -la out
           prev="$(git tag --list 'v*' --sort=-creatordate | grep -vx "$VERSION" | head -1 || true)"
           {
             if [ -n "$prev" ]; then git log --no-merges --format='- %s' "$prev..HEAD"
@@ -83,5 +113,6 @@ jobs:
           } > notes.md
           cat notes.md
           gh release create "$VERSION" --target "$GITHUB_SHA" --title "$VERSION" --notes-file notes.md \
-            dist/NeonCable42-x86_64.AppImage dist/NeonCable42-x86_64.AppImage.sha256 \
-            dist/XCable-x86_64.AppImage dist/XCable-x86_64.AppImage.sha256
+            out/NeonCable42-x86_64.AppImage out/NeonCable42-x86_64.AppImage.sha256 \
+            out/XCable-x86_64.AppImage out/XCable-x86_64.AppImage.sha256 \
+            out/*-Box-*.apk

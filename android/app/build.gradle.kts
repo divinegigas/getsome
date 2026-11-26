@@ -12,7 +12,7 @@ val keystore: String? = System.getenv("KEYSTORE")
 
 android {
     namespace = "app.neoncable42.box"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26
@@ -88,5 +88,5 @@ kotlin {
 
 dependencies {
     // libmpv for Android (the player the desktop app uses): plays every format the desktop does
-    implementation("dev.jdtech.mpv:libmpv:1.1.0")
+    implementation("dev.jdtech.mpv:libmpv:1.0.0")
 }

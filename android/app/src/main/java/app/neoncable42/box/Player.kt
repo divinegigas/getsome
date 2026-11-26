@@ -60,10 +60,16 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
         mpv.setPropertyString("end", end?.let { fmt(it) } ?: "none")
         mpv.setPropertyString("loop-file", if (loop) "inf" else "no")
         mpv.setPropertyBoolean("pause", false)
+        stopped = false
         mpv.command(arrayOf("loadfile", url, "replace"))
     }
 
-    fun stop() = mpv.command(arrayOf("stop"))
+    private var stopped = true            // stopped on purpose (guide, off air): not a failure
+
+    fun stop() {
+        stopped = true
+        mpv.command(arrayOf("stop"))
+    }
 
     fun seek(seconds: Double) = mpv.command(arrayOf("seek", fmt(seconds), "absolute"))
 
@@ -111,23 +117,36 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
     fun setTrack(type: String, id: Int?) =
         mpv.setPropertyString(if (type == "audio") "aid" else "sid", id?.toString() ?: "no")
 
+    private var destroyed = false
+
     fun destroy() {
+        destroyed = true
         mpv.removeObserver(this)
         mpv.destroy()
     }
 
     // ---------------------------------------------------------------- events (mpv's thread)
     override fun event(eventId: Int) {
-        if (eventId == MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART) main.post { listener.onPlaybackRestart() }
+        when (eventId) {
+            MPVLib.MpvEvent.MPV_EVENT_PLAYBACK_RESTART -> main.post { listener.onPlaybackRestart() }
+            // this libmpv doesn't say why a file ended; a channel change starts the next file at once, so
+            // a player still idle a moment later means the file couldn't be played (PC gone, bad file)
+            MPVLib.MpvEvent.MPV_EVENT_END_FILE -> main.postDelayed({
+                if (!destroyed && !stopped && mpv.getPropertyBoolean("idle-active") == true) listener.onEndFile(END_ERROR, 0)
+            }, 1500)
+        }
     }
 
-    override fun eventEndFile(reason: Int, error: Int) {
-        main.post { listener.onEndFile(reason, error) }
-    }
+    override fun eventProperty(property: String) {}
+    override fun eventProperty(property: String, value: Long) {}
+    override fun eventProperty(property: String, value: Double) {}
+    override fun eventProperty(property: String, value: Boolean) {}
+    override fun eventProperty(property: String, value: String) {}
 
     companion object {
         private const val TAG = "CableBox"
         const val HWDEC = "mediacodec,mediacodec-copy"
+        const val END_ERROR = 4                  // as MPV_END_FILE_REASON_ERROR
         private fun fmt(v: Double) = String.format(Locale.US, "%.3f", v)
     }
 }

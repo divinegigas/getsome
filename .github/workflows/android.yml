@@ -32,6 +32,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # keeps Gradle's downloads between runs: fewer trips to Maven Central (which rate-limits busy runners)
+      - uses: gradle/actions/setup-gradle@v4
+
       - name: Signing key
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
@@ -50,7 +53,13 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleRelease
+          # Maven Central sometimes answers "429 Too Many Requests": wait and try again
+          for i in 1 2 3; do
+            ./gradlew --no-daemon --stacktrace assembleRelease && exit 0
+            echo "::warning::build attempt $i failed; retrying in $((60 * i)) s"
+            sleep $((60 * i))
+          done
+          exit 1
 
       - name: Name the files
         run: |

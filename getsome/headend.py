@@ -151,6 +151,22 @@ def _segment_at(name, when):
         return {"nosignal": str(e)}
 
 
+def _guide_rows(names, when) -> list[dict]:
+    """The guide on a phone: what's on now and next on each channel, titles and times only (no episode
+    details, which would read every episode's .nfo from the library drive). One request for all."""
+    from . import fs42
+
+    out = []
+    for name in names:
+        try:
+            cur, nxt = fs42.now_and_next(name, _dt(when))
+        except Exception:
+            cur = nxt = None
+        out.append({"name": name, "now": cur.title if cur else "", "next": nxt.title if nxt else "",
+                    "next_start": nxt.start.isoformat() if nxt else ""})
+    return out
+
+
 def _calls() -> dict:
     from . import ads, artwork, fs42
 
@@ -161,6 +177,7 @@ def _calls() -> dict:
         "programmes": lambda name, start, end, limit=40: [_prog(p) for p in
                                                           fs42.programmes(name, _dt(start), _dt(end), limit)],
         "now_and_next": lambda name, when: [_prog(p) for p in fs42.now_and_next(name, _dt(when))],
+        "guide_rows": _guide_rows,
         "card_for": ads.card_for,
         "promo_for": ads.promo_for,
         "on_this_day": lambda path, day=None: list(ads.on_this_day(path, dt.date.fromisoformat(day) if day else None)),

@@ -187,6 +187,7 @@ class TvActivity : Activity(), Player.Listener {
     private fun <T> work(tk: Int, job: () -> T, done: (Result<T>) -> Unit) {
         try {
             bg.execute {
+                if (tk != token || !running) return@execute     // already flicked past: don't ask the PC
                 val r = runCatching(job)
                 ui.post { if (tk == token && running) done(r) }
             }
@@ -303,7 +304,6 @@ class TvActivity : Activity(), Player.Listener {
         applyLock()
         overlay.invalidate()
         loadNow(tk)
-        fetchBanner(tk, ch)
     }
 
     private fun step(d: Int) {
@@ -312,7 +312,10 @@ class TvActivity : Activity(), Player.Listener {
 
     private fun loadNow(tk: Int) {
         val ch = channels.getOrNull(index) ?: return
+        val asked = SystemClock.uptimeMillis()
         work(tk, { he.obj("segment_at", ch.name, HeadEnd.iso(LocalDateTime.now())) }) { r ->
+            lastAnswerMs = SystemClock.uptimeMillis() - asked
+            if (bannerData == null && r.isSuccess) fetchBanner(tk, ch)   // after the picture's question
             val e = r.exceptionOrNull()
             when {
                 e is HeadEnd.NotPaired -> lostPairing()
@@ -628,7 +631,8 @@ class TvActivity : Activity(), Player.Listener {
 
     // ================================================================ guide
     private fun openGuide() {
-        val rows = channels.filter { !it.guide }.map { Overlay.GuideRow(it.number, it.name, "", "") }
+        val known = guideCache.associateBy { it.number }
+        val rows = channels.filter { !it.guide }.map { known[it.number] ?: Overlay.GuideRow(it.number, it.name, "", "") }
         val cur = channels.getOrNull(index)
         overlay.guide = rows
         overlay.guideSel = rows.indexOfFirst { it.number == cur?.number }.coerceAtLeast(0)
@@ -640,20 +644,40 @@ class TvActivity : Activity(), Player.Listener {
     private fun refreshGuide() {
         val list = channels.filter { !it.guide }
         val tk = token
+        fun row(ch: Ch, now: String, next: String, start: String) = Overlay.GuideRow(ch.number, ch.name,
+            now.ifEmpty { "Off the air" },
+            if (next.isEmpty()) "" else (runCatching { HeadEnd.parse(start).format(time) + "  " }.getOrDefault("") + next))
+
+        fun show(rows: List<Overlay.GuideRow>) {
+            guideCache = rows
+            if (overlay.guide != null) {
+                val byNumber = rows.associateBy { it.number }
+                overlay.guide = overlay.guide?.map { byNumber[it.number] ?: it }
+                overlay.invalidate()
+            }
+        }
         work(tk, {
-            val now = LocalDateTime.now()
-            list.map { ch ->
-                val a = runCatching { he.arr("now_and_next", ch.name, HeadEnd.iso(now)) }.getOrNull()
-                val n = a?.optJSONObject(0)
-                val x = a?.optJSONObject(1)
-                Overlay.GuideRow(ch.number, ch.name, n?.optString("title").orEmpty().ifEmpty { "Off the air" },
-                    x?.let { "${HeadEnd.parse(it.getString("start")).format(time)}  ${it.optString("title")}" }.orEmpty())
+            // one request for every channel (PCs from 26 Nov on)
+            val a = he.arr("guide_rows", JSONArray(list.map { it.name }), HeadEnd.iso(LocalDateTime.now()))
+                ?: throw IOException("no guide")
+            list.mapIndexed { i, ch ->
+                val o = a.optJSONObject(i) ?: JSONObject()
+                row(ch, o.optString("now"), o.optString("next"), o.optString("next_start"))
             }
         }) { r ->
-            val rows = r.getOrNull() ?: return@work
-            if (overlay.guide != null) {
-                overlay.guide = rows
-                overlay.invalidate()
+            r.getOrNull()?.let { return@work show(it) }
+            // an older PC: channel by channel, each row shown as it arrives
+            val rows = ArrayList(overlay.guide ?: guideCache)
+            for (ch in list) work(tk, {
+                val a = he.arr("now_and_next", ch.name, HeadEnd.iso(LocalDateTime.now()))
+                val n = a?.optJSONObject(0)
+                val x = a?.optJSONObject(1)
+                row(ch, n?.optString("title").orEmpty(), x?.optString("title").orEmpty(), x?.optString("start").orEmpty())
+            }) { rr ->
+                val g = rr.getOrNull() ?: return@work
+                val i = rows.indexOfFirst { it.number == g.number }
+                if (i >= 0) rows[i] = g else rows.add(g)
+                show(rows.toList())
             }
         }
     }
@@ -688,12 +712,15 @@ class TvActivity : Activity(), Player.Listener {
     // ================================================================ menu
     private val menuKeys = listOf("audio", "subs", "picture", "ads", "info", "pc", "close")
     private var lastTuneMs = 0L
+    private var lastAnswerMs = 0L
+    private var guideCache: List<Overlay.GuideRow> = emptyList()
 
     /** INFO: a small readout (top left) of how playback is going, refreshed every second. */
     private val infoTick: Runnable = object : Runnable {
         override fun run() {
             if (!running || overlay.info == null) return
-            overlay.info = listOf("Channel change: " + if (lastTuneMs > 0) String.format(Locale.US, "%.1f s", lastTuneMs / 1000.0) else "-") +
+            overlay.info = listOf("Channel change: " + (if (lastTuneMs > 0) String.format(Locale.US, "%.1f s", lastTuneMs / 1000.0) else "-") +
+                "   (PC answered in " + String.format(Locale.US, "%.1f s", lastAnswerMs / 1000.0) + ")") +
                 runCatching { player.stats() }.getOrDefault(emptyList())
             overlay.invalidate()
             ui.postDelayed(this, 1000)
@@ -969,7 +996,7 @@ class TvActivity : Activity(), Player.Listener {
 
     companion object {
         // catch up only when well behind: each catch-up is another seek over Wi-Fi (more waiting)
-        private const val MAX_DRIFT = 6.0
+        private const val MAX_DRIFT = 15.0
         private const val END_ERROR = 4          // MPV_END_FILE_REASON_ERROR
         // as the desktop's restricted-channel blur, made from scaling only (always in Android builds of ffmpeg)
         private const val BLUR_VF = "lavfi=[scale=48:-2:flags=area,scale=960:-2:flags=bicubic]"

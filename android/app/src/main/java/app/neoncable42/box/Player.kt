@@ -34,6 +34,12 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
             "cache" to "yes", "demuxer-max-bytes" to "96MiB", "demuxer-max-back-bytes" to "16MiB",
             "demuxer-readahead-secs" to "30", "cache-secs" to "30", "network-timeout" to "20",
             "sub-scale" to "1.2", "save-position-on-quit" to "no",
+            // tune in at the nearest keyframe, not the exact frame: an exact start decodes everything from
+            // the keyframe up to "now" first, which takes a phone many seconds on some files
+            "hr-seek" to "no",
+            // when the phone's processor has to decode (formats its video chip can't do, e.g. 10-bit
+            // HEVC): skip the deblocking filter and drop frames rather than fall behind
+            "vd-lavc-skiploopfilter" to "all", "vd-lavc-fast" to "yes", "framedrop" to "decoder+vo",
         )
         for ((k, v) in o) mpv.setOptionString(k, v)
         mpv.init()
@@ -74,7 +80,7 @@ class Player(ctx: Context, private val listener: Listener) : SurfaceHolder.Callb
         mpv.command(arrayOf("stop"))
     }
 
-    fun seek(seconds: Double) = mpv.command(arrayOf("seek", fmt(seconds), "absolute"))
+    fun seek(seconds: Double) = mpv.command(arrayOf("seek", fmt(seconds), "absolute+keyframes"))
 
     val position: Double? get() = mpv.getPropertyDouble("time-pos")
 

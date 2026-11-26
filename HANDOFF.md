@@ -589,9 +589,10 @@ and `xcable` (app.xcable.box, 4252/4253), own name, icon (drawn by `desktop.make
   embeddable 2.2.10 against Robolectric's `android-all` jar (Maven Central) + the libmpv AAR's
   classes.jar + a stub `BuildConfig`, and run `HeadEnd` against `./getsome.sh serve` with test data
   (done 26 Nov: discovery, wrong/right code, info, segments, Range, now/next, refusals all passed).
-- **Signing**: no repository secret yet (ANDROID_KEYSTORE_B64 + ANDROID_KEYSTORE_PASSWORD), so each
-  build has a throwaway key and an update needs uninstall + reinstall (and pairing again). Adding the
-  secrets was left to the owner's decision.
+- **Signing**: `android/signing_key.py` derives the key from the repository secret
+  `ANDROID_KEY_PASSPHRASE` (PBKDF2 → deterministic primes → fixed self-signed cert; same passphrase =
+  same certificate, checked). The owner sets that secret themselves (this sandbox can't reach the Actions
+  secrets API, and a key shouldn't travel through chat). Without it: throwaway key, uninstall to update.
 - **Lag (owner, 26 Nov: "much more lag than Linux to Linux")**: first fixes, unmeasured on a device:
   mpv `profile=fast` (default scalers are heavy for phone GPUs), `hwdec=mediacodec-copy` directly
   (plain `mediacodec` needs vo=mediacodec_embed, so each file wasted a failed attempt), the vf is only
@@ -599,6 +600,15 @@ and `xcable` (app.xcable.box, 4252/4253), own name, icon (drawn by `desktop.make
   MAX_DRIFT 3 → 6 s (fewer catch-up seeks). Menu → INFO shows channel-change time, decoder, dropped
   frames and buffered seconds: ask the owner for those numbers if it still lags. If the decoder says
   software, the next step is vo=mediacodec_embed (zero-copy, but subtitles then need another route).
+- **Owner's report (26 Nov)**: 45–60 s of static before a show, guide ~1 min, some channels better than
+  others, some choppy playback. Not reproduced here (PC answers in ms; desktop mpv over a 4 MB/s relay with a
+  15 Mbit/s 1080p file starts in <1 s), so the phone itself is the suspect: exact-frame starts (`start=` is
+  an hr-seek: decode from the keyframe to the second) on formats the phone's video chip can't decode
+  (10-bit HEVC → software). Second round: `hr-seek=no`, keyframe catch-up seeks, MAX_DRIFT 15 s,
+  `vd-lavc-skiploopfilter=all`, `vd-lavc-fast`, `framedrop=decoder+vo`; requests for channels already
+  flicked past are skipped; the banner is asked after the segment; new head-end call **`guide_rows(names,
+  when)`** (titles/times only, no episode NFO reads; the phone falls back to per-channel now_and_next on
+  older PCs and shows the last guide at once). INFO adds "PC answered in".
 - **Not done yet**: the desktop's painted look for ads/cards/up-next, guide music, zoom/sides parity
   (only normal/zoom/stretch), in-app update check, Android TV launcher banner.
 

@@ -2,9 +2,9 @@
 # Runs on every push that touches android/ (a test build you can download from the run's page), and is
 # called by appimage.yml so every release carries the APKs too.
 #
-# Signing: with the repository secrets ANDROID_KEYSTORE_B64 (base64 of a .jks) and
-# ANDROID_KEYSTORE_PASSWORD, every build is signed with the same key, so a new APK installs over the old
-# one. Without them the build uses a throwaway key (to update, uninstall the old app first).
+# Signing: with the repository secret ANDROID_KEY_PASSPHRASE (a long random text the owner chose),
+# android/signing_key.py makes the same key every build, so a new APK installs over the old one.
+# Without it the build uses a throwaway key (to update, uninstall the old app first).
 name: Android
 
 on:
@@ -37,16 +37,15 @@ jobs:
 
       - name: Signing key
         env:
-          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSPHRASE: ${{ secrets.ANDROID_KEY_PASSPHRASE }}
         run: |
-          if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
-            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/box.jks"
-            echo "KEYSTORE=$RUNNER_TEMP/box.jks" >> "$GITHUB_ENV"
-            echo "KEYSTORE_PASSWORD=$KS_PW" >> "$GITHUB_ENV"
-            echo "signing with the release key"
+          if [ -n "$ANDROID_KEY_PASSPHRASE" ]; then
+            pip install --quiet cryptography
+            python3 android/signing_key.py "$RUNNER_TEMP/box.p12"
+            echo "KEYSTORE=$RUNNER_TEMP/box.p12" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=box" >> "$GITHUB_ENV"
           else
-            echo "::warning::No signing key secret: this build uses a throwaway key"
+            echo "::warning::No ANDROID_KEY_PASSPHRASE secret: this build uses a throwaway key"
           fi
 
       - name: Build

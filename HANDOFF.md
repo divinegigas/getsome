@@ -561,6 +561,40 @@ the new-episode check, every-episode rotation, schedule upkeep, update button, e
   straight into TV mode.
 - Steam Big Picture / Steam Deck-style living-room polish, building on item 3.
 
+## Android cable box (26 Nov, first version, untested on a device)
+`android/`: a Kotlin app (no AndroidX, plain Views + one Canvas overlay) that is a **cable box** for the
+PC's sharing service, speaking exactly the desktop box's protocol (headend.py: UDP discovery `NC42?`,
+`/api/pair` with the 6-digit code, `/api/call` info / segment_at / now_and_next / programmes /
+card_for / promo_for / on_this_day / artwork, `/f/<token>/<path>` with Range). **The PC needed no
+changes.** Two product flavors like the desktop editions: `neon` (app.neoncable42.box, ports 4242/4243)
+and `xcable` (app.xcable.box, 4252/4253), own name, icon (drawn by `desktop.make_icon`), palette
+(`Brand.kt`) and fonts (the bundled OFL files in assets/fonts).
+- **Player**: `dev.jdtech.mpv:libmpv:1.0.0` (Maven Central; libmpv for Android, all formats, AC3/DTS).
+  1.1.0 needs compileSdk 37, newer than AGP 8.10.1; 1.0.0 has no end-file reason, so `Player` treats
+  "idle 1.5 s after a file ended, and not stopped on purpose" as a failure.
+- **Files**: `TvActivity` (line-up, tune → static + hiss → `segment_at` → load at the live position with
+  `end=file_end`, timer to `ends_at` → next segment; drift seek once; off-air bars + 1 kHz tone; ADS
+  volume for `content_type == "commercial"`; PIN/lock schedule/silent relock; guide list; menu: audio,
+  subtitles, picture, ads, pair again), `Overlay` (all drawing + touch targets), `Player`, `Tones`
+  (hiss/tone via AudioTrack), `HeadEnd` (+ `Prefs`), `PairActivity`, `Brand`.
+- **Generated clips** (black carriers the desktop paints live) are recognised by the same filename
+  patterns as `ads.kind_of` / `assets_gen.is_generated_upnext`; the phone draws simpler cards (up next
+  with fanart, promo/trivia/spotlight/lineup/on-this-day from `card_for`, BRB/back, channel ID, sponsor).
+- **Controls**: swipe up/down = channel, tap = buttons (CH▲ CH▼ 123 GUIDE MENU LAST) + banner; keys
+  for keyboards / TV remotes / game pads (D-pad, CH±, digits, Enter, Menu/M, Guide/G, Back twice = exit).
+- **Build**: `.github/workflows/android.yml` on every push touching android/ (artifact, 30 days) and
+  from the release workflow (APKs attached to the GitHub Release: NeonCable42-Box-arm64.apk / -arm32,
+  XCable-Box-arm64.apk / -arm32). The sandbox can't reach Google's Maven/SDK (dl.google.com), so
+  Gradle builds only run on GitHub. Local check: compile the Kotlin sources with kotlin-compiler-
+  embeddable 2.2.10 against Robolectric's `android-all` jar (Maven Central) + the libmpv AAR's
+  classes.jar + a stub `BuildConfig`, and run `HeadEnd` against `./getsome.sh serve` with test data
+  (done 26 Nov: discovery, wrong/right code, info, segments, Range, now/next, refusals all passed).
+- **Signing**: no repository secret yet (ANDROID_KEYSTORE_B64 + ANDROID_KEYSTORE_PASSWORD), so each
+  build has a throwaway key and an update needs uninstall + reinstall (and pairing again). Adding the
+  secrets was left to the owner's decision.
+- **Not done yet**: the desktop's painted look for ads/cards/up-next, guide music, zoom/sides parity
+  (only normal/zoom/stretch), in-app update check, Android TV launcher banner.
+
 ## Volume sliders (26 Nov)
 TV-mode MENU has two slider rows: **VOLUME** (the TV volume, 0–130, saved as `settings["volume"]`, the
 same value as Settings → TV volume and the remote's volume keys, which now also save it) and **ADS**

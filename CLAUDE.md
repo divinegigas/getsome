@@ -54,6 +54,9 @@ sudo dnf install mpv-libs ffmpeg-free python3     # Fedora
   from the repo's GitHub Releases. Built by `.github/workflows/appimage.yml` (push a tag `vYYYY.MM.DD`;
   same-day extras `vYYYY.MM.DD.2`) with `packaging/build_appimage.sh`; see HANDOFF "AppImages". Never
   hard-code `getsome.sh`: use `paths.launcher_path()` / `launch_cmd()` / `launch_hint()`.
+- **Android cable box** (`android/`, see HANDOFF): built only on GitHub (`.github/workflows/android.yml`; the
+  sandbox can't reach Google's Maven). It speaks the head-end protocol, so changing `headend.py`'s calls
+  or JSON shapes means updating `HeadEnd.kt` / `TvActivity.kt` too.
 - **User data:** `~/.local/share/getsome/` (`channels.json`, `library.json`, `movies.json`, `fs42/` work dir with `confs/`, `runtime/`, `catalog/`, `overrides/`, `logs/`).
 - **Settings and keymap:** `~/.config/getsome/settings.json` and `keymap.json`.
 - **For isolated testing:** `GETSOME_DATA_DIR=… XDG_CONFIG_HOME=…`. Headless: `Xvfb :99` + `DISPLAY=:99` (in the sandbox, llvmpipe sometimes renders mpv black, and Xvfb sometimes dies between long jobs; restart it).
@@ -83,6 +86,7 @@ getsome/assets_gen.py    runtime media, up-next clips, guide-music composer proc
 getsome/synth.py, music.py   synthesizer + composer (10 original guide tracks)
 getsome/beds.py          short original beds: jrpg, metal, rock, punk, reggae, ska (cards, ads, intermissions)
 getsome/gui/             setup window (theme, main_window, channel_editor, schedule_editor, dialogs, workers)
+android/                 Android cable-box app (Kotlin; flavors neon/xcable; libmpv): TvActivity, Overlay, Player, HeadEnd, PairActivity
 packaging/               build_appimage.sh, AppRun, excludelist (AppImage build); .github/workflows/appimage.yml publishes
 getsome/tv/              TV mode (app, mpv_widget, overlays, bumpers, intermissions, ads_paint, art_paint, guide, menu, awake, hiss, keys, gamepad)
 ```

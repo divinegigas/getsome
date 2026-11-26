@@ -300,6 +300,7 @@ class TVWindow(QMainWindow):
             self._intermission(ch, seg, token)
             return
         self.state.intermission = None
+        self._apply_volume()                  # commercials quieter, before their first sound
         is_image = seg.media_type == "image" or seg.path.lower().endswith((".png", ".jpg", ".jpeg"))
         if is_image:
             self.video.load(seg.path)
@@ -350,7 +351,7 @@ class TVWindow(QMainWindow):
         if pl is not None:
             try:
                 pl["aid"] = "auto" if on else "no"
-                pl.volume = self.video.player.volume or float(self.settings.get("volume", 100))
+                pl.volume = float(self.settings.get("volume", 100))
                 pl.mute = not on
             except Exception as e:
                 _log.debug("preview audio: %s", e)
@@ -704,6 +705,32 @@ class TVWindow(QMainWindow):
                 f"[a]scale=320:180,boxblur=10:2,eq=brightness=-0.10:saturation=1.15,scale={W}:{H},setsar=1[bg];"
                 f"[b]scale={fw}:{H},setsar=1[fg];[bg][fg]overlay=x={(W - fw) // 2}:y=0]")
 
+    # ------------------------------------------------------------------ volume
+    def _ad_playing(self) -> bool:
+        return self.seg is not None and self.seg.content_type == "commercial"
+
+    def _apply_volume(self) -> None:
+        """The TV volume, or during commercials that share of it ("ad_volume" percent): real ads are
+        mastered far louder than shows."""
+        vol = float(self.settings.get("volume", 100))
+        if self._ad_playing():
+            vol *= max(0, min(100, int(self.settings.get("ad_volume", 50)))) / 100.0
+        try:
+            self.video.player.volume = vol
+        except Exception as e:
+            _log.debug("volume: %s", e)
+
+    def _set_volume(self, key: str, value: int) -> None:
+        """Remembered for next time, like the Settings sliders."""
+        self.settings[key] = value
+        try:
+            s = settings.load()
+            s[key] = value
+            settings.save(s)
+        except OSError:
+            pass
+        self._apply_volume()
+
     def _apply_track_prefs(self) -> None:
         """Pick audio/subtitle tracks matching the preferred languages, once per loaded file."""
         seg = self.seg
@@ -805,7 +832,8 @@ class TVWindow(QMainWindow):
             tracks = list(self.video.player.track_list or [])
         except Exception:
             tracks = []
-        self.menu.show(tracks, self._zoom_mode(), self.settings.get("side_fill", "black"))
+        self.menu.show(tracks, self._zoom_mode(), self.settings.get("side_fill", "black"),
+                       int(self.settings.get("volume", 100)), int(self.settings.get("ad_volume", 50)))
         self.state.banner_fade.hide()
         self.video.update()
 
@@ -815,6 +843,10 @@ class TVWindow(QMainWindow):
             return
         kind, t = res
         p = self.video.player
+        if kind in ("volume", "ad_volume"):
+            self._set_volume(kind, int(t))
+            self.video.update()
+            return
         if kind == "sides":              # blurred sides for narrow pictures: one setting for everything
             s = settings.load()
             s["side_fill"] = self.settings["side_fill"] = t
@@ -1055,9 +1087,10 @@ class TVWindow(QMainWindow):
             self.state.banner_info = {"header": "MUTE" if self.video.player.mute else "SOUND ON"}
             self.state.banner_fade.show(1.5)
         elif action in ("volume_up", "volume_down"):
-            vol = max(0, min(130, (self.video.player.volume or 100) + (5 if action == "volume_up" else -5)))
-            self.video.player.volume = vol
-            self.state.banner_info = {"header": f"VOLUME {int(vol)}  " + "|" * int(vol / 5)}
+            vol = max(0, min(130, int(self.settings.get("volume", 100)) + (5 if action == "volume_up" else -5)))
+            self._set_volume("volume", vol)
+            note = f"  (ads {int(self.settings.get('ad_volume', 50))}%)" if self._ad_playing() else ""
+            self.state.banner_info = {"header": f"VOLUME {int(vol)}  " + "|" * int(vol / 5) + note}
             self.state.banner_fade.show(1.5)
         elif action == "fullscreen":
             self.showNormal() if self.isFullScreen() else self.showFullScreen()

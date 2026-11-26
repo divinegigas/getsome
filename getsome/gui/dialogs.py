@@ -1047,6 +1047,7 @@ class SettingsDialog(QDialog):
         row.addWidget(self.hwdec, 1)
         lay.addLayout(row)
         self.volume = self._slider(lay, "TV volume", int(self.s.get("volume", 100)), 130)
+        self.ad_volume = self._slider(lay, "Commercials (% of TV)", int(self.s.get("ad_volume", 50)), 100)
         self.hiss = self._slider(lay, "Static hiss volume", int(self.s.get("hiss_volume", 35)), 100)
 
         from .. import updater
@@ -1267,6 +1268,7 @@ class SettingsDialog(QDialog):
         self.s["hwdec"] = self.hwdec.currentData()
         self.s["volume"] = self.volume.value()
         self.s["hiss_volume"] = self.hiss.value()
+        self.s["ad_volume"] = self.ad_volume.value()
         self.s["guide_channel"] = self.guide.value()
         self.s["guide_music"] = self.gmusic.currentData()
         self.s["guide_preview"] = self.gpreview.isChecked()

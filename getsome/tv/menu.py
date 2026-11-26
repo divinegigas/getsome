@@ -1,4 +1,5 @@
-"""On-screen MENU: audio track and subtitle choice for what's playing.
+"""On-screen MENU: audio track and subtitle choice for what's playing, picture shape, and the two
+volumes (the TV's, and commercials as a share of it, since real ads are mastered much louder).
 
 Choices become preferred languages (settings: audio_lang / sub_lang) and are
 re-applied to every new file, so picking Japanese audio + English subtitles on
@@ -30,6 +31,8 @@ ZOOMS = [("normal", "Normal"), ("zoom", "Zoom (fill, no bars)"), ("cinema", "Cin
          ("stretch", "Stretch to fill"), ("4:3", "Force 4:3"), ("16:9", "Force 16:9")]
 ZOOM_KEYS = [k for k, _ in ZOOMS]
 SIDES = [("black", "Black bars"), ("blur", "Blurred picture")]       # for pictures narrower than the screen
+VOLUME_MAX, VOLUME_STEP = 130, 5         # the TV volume, as mpv takes it (100 = the file as it is)
+AD_VOLUME_STEP = 10                      # commercials: percent of the TV volume, 0 (silent) to 100 (same)
 
 
 def lang_name(code: str | None) -> str:
@@ -54,7 +57,7 @@ def track_label(t: dict) -> str:
 
 
 class TrackMenu:
-    ROWS = ("audio", "subs", "picture", "sides", "close")
+    ROWS = ("audio", "subs", "picture", "sides", "volume", "ad_volume", "close")
 
     def __init__(self):
         self.open = False
@@ -65,10 +68,14 @@ class TrackMenu:
         self.sub_i = 0            # 0 = off, 1.. = subs[i-1]
         self.zoom_i = 0           # index into ZOOMS
         self.sides_i = 0          # index into SIDES
+        self.volume = 100
+        self.ad_volume = 50
         self._touched = 0.0
 
     # ---------------------------------------------------------------- state
-    def show(self, tracks: list[dict], zoom: str = "normal", sides: str = "black") -> None:
+    def show(self, tracks: list[dict], zoom: str = "normal", sides: str = "black",
+             volume: int = 100, ad_volume: int = 50) -> None:
+        self.volume, self.ad_volume = int(volume), int(ad_volume)
         self.zoom_i = ZOOM_KEYS.index(zoom) if zoom in ZOOM_KEYS else 0
         self.sides_i = 1 if sides == "blur" else 0
         self.audio = [t for t in tracks if t.get("type") == "audio"]
@@ -105,6 +112,12 @@ class TrackMenu:
         if r == "sides":
             self.sides_i = (self.sides_i + d) % len(SIDES)
             return "sides", SIDES[self.sides_i][0]
+        if r == "volume":                 # sliders stop at the ends (no wrapping round to silence)
+            self.volume = max(0, min(VOLUME_MAX, self.volume + d * VOLUME_STEP))
+            return "volume", self.volume
+        if r == "ad_volume":
+            self.ad_volume = max(0, min(100, self.ad_volume + d * AD_VOLUME_STEP))
+            return "ad_volume", self.ad_volume
         return None
 
     # ---------------------------------------------------------------- paint
@@ -112,7 +125,7 @@ class TrackMenu:
         if not self.open:
             return
         unit = h / 1080.0
-        pw, ph = 960 * unit, 632 * unit
+        pw, ph = 960 * unit, 804 * unit
         x0, y0 = (w - pw) / 2, (h - ph) / 2
         p.save()
         p.fillRect(QRectF(0, 0, w, h), QColor(0, 0, 0, 120))
@@ -139,6 +152,9 @@ class TrackMenu:
              bool(self.subs)),
             ("PICTURE", ZOOMS[self.zoom_i][1], True),
             ("SIDES", SIDES[self.sides_i][1], True),
+            ("VOLUME", ("slider", self.volume / VOLUME_MAX, str(self.volume)), True),
+            ("ADS", ("slider", self.ad_volume / 100,
+                     "Silent" if not self.ad_volume else f"{self.ad_volume}%"), True),
             ("CLOSE", "", True),
         ]
         y = y0 + 130 * unit
@@ -152,7 +168,28 @@ class TrackMenu:
             p.setPen(QColor(CYAN) if sel else QColor(150, 140, 210))
             fm = QFontMetricsF(p.font())
             p.drawText(QPointF(box.left() + 26 * unit, box.center().y() + fm.ascent() / 2.6), label)
-            if value:
+            if isinstance(value, tuple):          # a slider: bar + number
+                _kind, frac, num = value
+                vx = box.left() + 260 * unit
+                bar = QRectF(vx, box.center().y() - 9 * unit, box.width() * 0.44, 18 * unit)
+                p.fillRect(bar, QColor(60, 40, 110))
+                g2 = QLinearGradient(bar.left(), 0, bar.right(), 0)
+                g2.setColorAt(0, QColor(CYAN))
+                g2.setColorAt(1, QColor(PINK))
+                p.fillRect(QRectF(bar.left(), bar.top(), bar.width() * max(0.0, min(1.0, frac)), bar.height()), g2)
+                p.setPen(QPen(QColor(150, 140, 210), 1))
+                p.drawRect(bar)
+                p.setFont(font("text", int(34 * unit)))
+                fm = QFontMetricsF(p.font())
+                p.setPen(QColor("#ffffff"))
+                p.drawText(QPointF(bar.right() + 24 * unit, box.center().y() + fm.ascent() / 2.6), num)
+                if sel:
+                    p.setFont(font("text", int(36 * unit)))
+                    fm = QFontMetricsF(p.font())
+                    p.setPen(QColor(YELLOW))
+                    p.drawText(QPointF(vx - 40 * unit, box.center().y() + fm.ascent() / 2.6), "◂")
+                    p.drawText(QPointF(box.right() - 30 * unit, box.center().y() + fm.ascent() / 2.6), "▸")
+            elif value:
                 p.setFont(font("text", int(36 * unit)))
                 fm = QFontMetricsF(p.font())
                 txt = fm.elidedText(value, Qt.ElideRight, box.width() * 0.62)
@@ -167,7 +204,7 @@ class TrackMenu:
         p.setFont(font("text", int(26 * unit)))
         p.setPen(QColor(150, 140, 210))
         p.drawText(QPointF(x0 + 60 * unit, y0 + ph - 22 * unit),
-                   "▲▼ choose     ◂ ▸ change     OK / MENU close     Choices are remembered")
+                   "▲▼ choose     ◂ ▸ change     OK / MENU close     All remembered")
         p.restore()
 
 

@@ -21,6 +21,7 @@ DEFAULTS: dict[str, Any] = {
     "hwdec": "no",
     "volume": 100,
     "hiss_volume": 35,
+    "ad_volume": 50,            # commercials play at this percent of the TV volume (0 = silent)
     "remember_last_channel": True,
     # Stop the screen blanking / computer sleeping while TV mode is on
     "keep_awake": True,

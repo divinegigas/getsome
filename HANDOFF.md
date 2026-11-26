@@ -561,6 +561,14 @@ the new-episode check, every-episode rotation, schedule upkeep, update button, e
   straight into TV mode.
 - Steam Big Picture / Steam Deck-style living-room polish, building on item 3.
 
+## Volume sliders (26 Nov)
+TV-mode MENU has two slider rows: **VOLUME** (the TV volume, 0–130, saved as `settings["volume"]`, the
+same value as Settings → TV volume and the remote's volume keys, which now also save it) and **ADS**
+(`settings["ad_volume"]`, default 50: commercials play at that percent of the TV volume; 0 = silent).
+`TVWindow._apply_volume` is the one place that sets mpv's volume: called before each file loads, and
+it lowers only FS42 `content_type == "commercial"` (own ads, generated ads, promos and IDs in the
+commercial pool), not bumps, cards in intermissions or shows. Also in Settings as "Commercials (% of TV)".
+
 ## AppImages (24 Nov)
 Two files, one per edition: **NeonCable42-x86_64.AppImage** and **XCable-x86_64.AppImage**, published as
 **GitHub Releases** of this repo by `.github/workflows/appimage.yml` (push a tag `vYYYY.MM.DD` or "Run

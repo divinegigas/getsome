@@ -658,6 +658,36 @@ part-watched things, OK opens the browser; the BACK menu switches between cable 
 - Ideas next: A–Z jump (number keys could jump letters, but digits currently mean "go to channel"),
   trailers or a live preview behind the home backdrop, "On Demand" row in the guide, Android support.
 
+## Remote "OK does nothing" = air-mouse mode (28 Nov) · ready fix, NOT applied
+Owner report: OK stopped working on both PCs (Enter on the remote's keyboard still worked; re-running
+Settings → Remote control → "Fix the OK button…" didn't help). Cause: **the remote had been switched into
+its air-mouse mode**, where OK sends a *left mouse click* (BTN_LEFT) instead of a key. TV mode hides the
+cursor and ignored clicks; the hwdb fix (`remote_helper.py`) only remaps KEY_OK/KEY_SELECT, so it can't
+help. Switching air-mouse mode off fixed it. **First thing to ask if OK "stops working" again.**
+
+A safety net was written and tested (right click opened the BACK menu, left click chose in it, in cable
+mode and in On Demand) but the owner asked **not to ship it for now**. To apply it, add to `TVWindow` in
+`getsome/tv/app.py`, just before the "game controllers" section (`_duplicate` already exists):
+```python
+    # ------------------------------------------------------------------ mouse clicks
+    def mousePressEvent(self, ev):
+        """Remotes with an "air mouse" mode send OK as a left mouse click (and some send Back as a right
+        click): treat them as the buttons, so OK works whichever mode the remote is in."""
+        action = {Qt.LeftButton: "enter", Qt.RightButton: "back", Qt.BackButton: "back",
+                  Qt.MiddleButton: "menu"}.get(ev.button())
+        if action is None:
+            return super().mousePressEvent(ev)
+        _log.debug("mouse button as %s", action)
+        if self._duplicate(action, "mouse"):
+            return
+        self._handle(action, 0)
+        self.video.update()
+
+    def mouseDoubleClickEvent(self, ev):
+        self.mousePressEvent(ev)          # two quick OK presses arrive as a double click
+```
+Side effect to mention when shipping: a real mouse click in TV mode then also counts as OK / BACK.
+
 ## Android cable box (26 Nov, first version, untested on a device)
 `android/`: a Kotlin app (no AndroidX, plain Views + one Canvas overlay) that is a **cable box** for the
 PC's sharing service, speaking exactly the desktop box's protocol (headend.py: UDP discovery `NC42?`,

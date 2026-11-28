@@ -9,6 +9,10 @@ Data only (no Qt); the screens are in tv/ondemand.py.
   show_detail(f)     a show's seasons and episodes (paths, codes, titles, plots, stills).
   History            where you stopped in each file, what you finished, and what's next per show
                      (ondemand_history.json, on this computer only; a cable box keeps its own).
+  favourites         titles marked as favourites (ondemand_favourites.json, per computer too).
+  find_item(path)    the title (and episode) a channel is playing, for "Watch On Demand" in the MENU.
+  generated art      titles with no poster (or backdrop) get one made from a frame of the video with the
+                     title set over it (ondemand_art/), in the background, so the library looks consistent.
 
 Nothing is ever written next to the media.
 """
@@ -169,12 +173,12 @@ def catalog() -> dict:
     key = _sources_key()
     with _lock:
         if _memo and _memo[0] == key:
-            return _memo[1]
+            return _with_art(_memo[1])
         try:
             data = json.loads(_catalog_file().read_text())
             if data.get("key") == key:
                 _memo = (key, data["catalog"])
-                return data["catalog"]
+                return _with_art(data["catalog"])
         except (OSError, ValueError, KeyError):
             pass
         shows, movies = library.cached(), library.cached_movies()
@@ -205,7 +209,7 @@ def catalog() -> dict:
         except OSError as e:
             _log.debug("catalog cache: %s", e)
         _memo = (key, cat)
-        return cat
+        return _with_art(cat)
 
 
 @functools.lru_cache(maxsize=64)
@@ -262,6 +266,263 @@ def meta_line(item: dict) -> str:
     if item.get("genres"):
         bits.append(" / ".join(item["genres"][:3]))
     return "  ·  ".join(bits)
+
+
+# ------------------------------------------------------------------ made-up covers
+
+ART_VERSION = 2
+
+
+def _art_dir() -> Path:
+    return paths.data_dir() / "ondemand_art"
+
+
+def _art_key(item: dict) -> str:
+    import hashlib
+
+    return hashlib.sha1(f"{ART_VERSION}|{item['id']}".encode()).hexdigest()[:20]
+
+
+def _needs(item: dict) -> list[str]:
+    art = item.get("art") or {}
+    return [k for k in ("poster", "fanart") if not art.get(k) and not (k == "fanart" and art.get("landscape"))]
+
+
+_gen_lock = threading.Lock()
+_gen_running = False
+_gen_failed: set[str] = set()
+
+
+def _with_art(cat: dict) -> dict:
+    """The catalog with made-up covers filled in where they exist; starts making the missing ones."""
+    todo = []
+    items = []
+    for it in cat.get("items", []):
+        need = _needs(it)
+        if not need:
+            items.append(it)
+            continue
+        it = {**it, "art": dict(it.get("art") or {})}
+        k = _art_key(it)
+        for kind in need:
+            f = _art_dir() / f"{k}-{kind}.jpg"
+            if f.exists():
+                it["art"][kind] = str(f)
+                if kind == "fanart" and not it["art"].get("landscape"):
+                    it["art"]["landscape"] = str(f)
+        if _needs(it) and it["id"] not in _gen_failed:
+            todo.append(it)
+        items.append(it)
+    if todo:
+        _start_art(todo)
+    return {**cat, "items": items, "art_pending": len(todo)}
+
+
+def _start_art(todo: list[dict]) -> None:
+    global _gen_running
+    with _gen_lock:
+        if _gen_running:
+            return
+        _gen_running = True
+
+    def run():
+        global _gen_running
+        try:
+            for it in todo:
+                try:
+                    if not make_art(it):
+                        _gen_failed.add(it["id"])
+                except Exception as e:
+                    _log.warning("cover for %s: %s", it.get("title"), e)
+                    _gen_failed.add(it["id"])
+        finally:
+            with _gen_lock:
+                _gen_running = False
+    threading.Thread(target=run, name="ondemand-art", daemon=True).start()
+
+
+def _sample_video(item: dict) -> str:
+    if item["kind"] == "movie":
+        return item["path"]
+    from . import media_index
+
+    eps = media_index.scan_show(Path(item["folder"])).episodes
+    return str(eps[min(1, len(eps) - 1)].path) if eps else ""
+
+
+def _duration(video: str) -> float:
+    import shutil
+    import subprocess
+
+    exe = shutil.which("ffprobe")
+    if not exe:
+        return 0.0
+    try:
+        out = subprocess.run([exe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video],
+                             capture_output=True, text=True, timeout=30).stdout.strip()
+        return float(out or 0)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 0.0
+
+
+def _wrap_title(title: str, size: int, width: int, font_w: float) -> list[str]:
+    per = max(4, int(width / (size * font_w)))
+    lines, cur = [], ""
+    for word in title.split():
+        trial = (cur + " " + word).strip()
+        if len(trial) > per and cur:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = trial
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def make_art(item: dict) -> bool:
+    """A frame from the video (30 % in) as the backdrop, and a 600x900 poster cut from it with the
+    title set in the edition's font. Written next to nothing but our own data folder."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    from . import brand
+    from .assets_gen import _esc
+
+    ffmpeg = shutil.which("ffmpeg")
+    video = _sample_video(item)
+    if not ffmpeg or not video or not os.path.exists(video):
+        return False
+    _art_dir().mkdir(parents=True, exist_ok=True)
+    k = _art_key(item)
+    need = _needs(item)
+    dur = _duration(video)
+    frame = _art_dir() / f"{k}-frame.jpg"
+    for at in ([dur * 0.3, dur * 0.12] if dur else []) + [60.0, 5.0, 0.0]:
+        cmd = ["nice", "-n", "15"] if shutil.which("nice") else []
+        cmd += [ffmpeg, "-loglevel", "error", "-y", "-ss", f"{at:.1f}", "-i", video, "-frames:v", "1",
+                "-vf", "scale=1280:-2", "-q:v", "3", str(frame)]
+        try:
+            subprocess.run(cmd, timeout=60, check=False)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        if frame.exists() and frame.stat().st_size > 2000:
+            break
+    if not frame.exists():
+        return False
+    if "fanart" in need:
+        shutil.copy(frame, _art_dir() / f"{k}-fanart.part.jpg")
+        os.replace(_art_dir() / f"{k}-fanart.part.jpg", _art_dir() / f"{k}-fanart.jpg")
+    if "poster" in need:
+        font = paths.FONTS_DIR / brand.FONTS["text"]
+        accent = brand.hexcolor("#ff2bd6").replace("#", "0x")
+        second = brand.hexcolor("#00f0ff").replace("#", "0x")
+        title = item.get("title") or "?"
+        font_w = 0.50 if paths.XCABLE else 0.47
+        for size in (92, 80, 70, 60, 52, 46):
+            lines = _wrap_title(title.upper() if not paths.XCABLE else title, size, 520, font_w)
+            if len(lines) <= 3 and all(len(x) * size * font_w <= 540 for x in lines):
+                break
+        tmp = Path(tempfile.mkdtemp(prefix="nc42art"))
+        try:
+            vf = ["scale=-2:900", "crop=600:900", "eq=brightness=-0.05:saturation=1.15"]
+            for i in range(30):                     # a smooth dark fade over the lower half, for the title
+                vf.append(f"drawbox=x=0:y={420 + i * 16}:w=600:h=16:color=black@{0.02 + i * 0.027:.3f}:t=fill")
+            vf.append(f"drawbox=x=18:y=18:w=564:h=864:color={accent}@0.9:t=3")
+            label = ("TV SERIES" if item["kind"] == "show" else "FEATURE FILM")
+            (tmp / "label.txt").write_text(label)
+            vf.append(f"drawtext=fontfile='{_esc(font)}':textfile='{_esc(tmp / 'label.txt')}':expansion=none"
+                      f":fontsize=30:fontcolor={second}:x=44:y=46:shadowcolor=black@0.8:shadowx=2:shadowy=2")
+            vf.append(f"drawbox=x=44:y=88:w=120:h=5:color={accent}:t=fill")
+            lh = int(size * 1.08)
+            year = str(item.get("year") or "")
+            bottom = 900 - 70 - (44 if year else 0)
+            for i, line in enumerate(lines):
+                f = tmp / f"l{i}.txt"
+                f.write_text(line)
+                y = bottom - (len(lines) - i) * lh
+                vf.append(f"drawtext=fontfile='{_esc(font)}':textfile='{_esc(f)}':expansion=none:fontsize={size}"
+                          f":fontcolor=white:x=(w-text_w)/2:y={y}:borderw=3:bordercolor={accent}@0.85"
+                          f":shadowcolor=black@0.7:shadowx=4:shadowy=5")
+            if year:
+                (tmp / "year.txt").write_text(year)
+                vf.append(f"drawtext=fontfile='{_esc(font)}':textfile='{_esc(tmp / 'year.txt')}':expansion=none"
+                          f":fontsize=36:fontcolor={second}:x=(w-text_w)/2:y={bottom + 6}"
+                          f":shadowcolor=black@0.8:shadowx=2:shadowy=2")
+            out = _art_dir() / f"{k}-poster.part.jpg"
+            subprocess.run([ffmpeg, "-loglevel", "error", "-y", "-i", str(frame), "-vf", ",".join(vf),
+                            "-q:v", "3", str(out)], timeout=60, check=False)
+            if not out.exists():
+                return False
+            os.replace(out, _art_dir() / f"{k}-poster.jpg")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        frame.unlink()
+    except OSError:
+        pass
+    _log.info("on demand: made a cover for %s", item.get("title"))
+    return True
+
+
+# ------------------------------------------------------------------ "Watch On Demand" from a channel
+
+def find_item(path: str) -> dict:
+    """The catalog title a scheduled file (a channel's link) belongs to: {"id", "episode"} or {}."""
+    if not path:
+        return {}
+    real = _real(path)
+    items = catalog().get("items", [])
+    for it in items:
+        if it["kind"] == "movie" and _real(it["path"]) == real:
+            return {"id": it["id"], "title": it["title"], "episode": ""}
+    best = None
+    for it in items:
+        if it["kind"] == "show":
+            root = _real(it["folder"]).rstrip("/") + "/"
+            if real.startswith(root) and (best is None or len(root) > len(best[0])):
+                best = (root, it)
+    if best is None:
+        return {}
+    it = best[1]
+    ep = ""
+    try:
+        for e in episodes_in_order(show_detail(it["folder"])):
+            if _real(e["path"]) == real:
+                ep = e["path"]
+                break
+    except OSError:
+        pass
+    return {"id": it["id"], "title": it["title"], "episode": ep}
+
+
+# ------------------------------------------------------------------ favourites
+
+def _fav_file() -> Path:
+    return paths.data_dir() / "ondemand_favourites.json"
+
+
+def favourites() -> list[str]:
+    try:
+        return [str(x) for x in json.loads(_fav_file().read_text()).get("ids", [])]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def is_favourite(item_id: str) -> bool:
+    return item_id in favourites()
+
+
+def set_favourite(item_id: str, on: bool) -> None:
+    ids = [i for i in favourites() if i != item_id]
+    if on:
+        ids.insert(0, item_id)            # newest first
+    try:
+        paths.ensure_dirs()
+        _fav_file().write_text(json.dumps({"ids": ids}))
+    except OSError as e:
+        _log.warning("couldn't save favourites: %s", e)
 
 
 # ------------------------------------------------------------------ viewing history

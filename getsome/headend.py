@@ -188,10 +188,11 @@ def _calls() -> dict:
         # On Demand (no FS42 involved, so these don't wait for the schedule lock)
         "ondemand_catalog": lambda: ondemand.catalog(),
         "ondemand_show": lambda folder: ondemand.show_detail(folder),
+        "ondemand_find": lambda path: ondemand.find_item(path),
     }
 
 
-NO_LOCK = {"ondemand_catalog", "ondemand_show"}
+NO_LOCK = {"ondemand_catalog", "ondemand_show", "ondemand_find"}
 
 
 # ------------------------------------------------------------------ HTTP

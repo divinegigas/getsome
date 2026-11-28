@@ -730,8 +730,8 @@ class TVWindow(QMainWindow):
         vol = float(self.settings.get("volume", 100))
         if self._ad_playing():
             vol *= max(0, min(100, int(self.settings.get("ad_volume", 50)))) / 100.0
-        elif self.vod.mode == "promo":
-            vol *= 0.6                        # the On Demand channel's clips sit under the TV volume
+        elif self.vod.mode:
+            vol *= self.vod.volume_factor()   # On Demand's channel clips, browsing music and previews
         try:
             self.video.player.volume = vol
         except Exception as e:
@@ -855,8 +855,55 @@ class TVWindow(QMainWindow):
         except Exception:
             tracks = []
         self.menu.show(tracks, self._zoom_mode(), self.settings.get("side_fill", "black"),
-                       int(self.settings.get("volume", 100)), int(self.settings.get("ad_volume", 50)))
+                       int(self.settings.get("volume", 100)), int(self.settings.get("ad_volume", 50)),
+                       extras=self._menu_extras())
         self.state.banner_fade.hide()
+        self.video.update()
+
+    def _menu_extras(self) -> tuple:
+        """MENU's On Demand rows: "Watch On Demand" (on a channel) and the favourite switch. On a channel
+        the title is looked up in the background (on a cable box the head-end answers)."""
+        from .. import ondemand
+
+        if self.vod.playing:
+            it = self.vod.p["item"]
+            self.menu.od = {"id": it["id"], "title": it["title"], "episode": ""}
+            self.menu.od_fav = ondemand.is_favourite(it["id"])
+            return ("favourite",)
+        seg = self.seg
+        if seg is None or seg.content_type != "feature" or self.state.locked or self.state.guide:
+            return ()
+        self.menu.od = None                  # looking it up
+        path = seg.path
+
+        def done(res):
+            if not self.menu.open:
+                return
+            res = res or {}
+            self.menu.od = res if res.get("id") else {}
+            self.menu.od_fav = ondemand.is_favourite(res["id"]) if res.get("id") else False
+            self.video.update()
+        self.vod._run_bg(lambda: ondemand.find_item(path), done)
+        return ("ondemand", "favourite")
+
+    def _menu_action(self, row: str) -> None:
+        from .. import ondemand
+
+        od = self.menu.od
+        if not od:
+            self.state.banner_info = {"header": "Still looking…" if od is None else "Not in the On Demand library"}
+            self.state.banner_fade.show(2.0)
+            return
+        if row == "ondemand":
+            self.menu.close()
+            self.vod.open_item(od["id"], od.get("episode", ""))
+        elif row == "favourite":
+            on = not ondemand.is_favourite(od["id"])
+            ondemand.set_favourite(od["id"], on)
+            self.menu.od_fav = on
+            self.state.banner_info = {"header": ("ADDED TO FAVOURITES" if on else "REMOVED FROM FAVOURITES"),
+                                      "title": od.get("title", "")}
+            self.state.banner_fade.show(2.5)
         self.video.update()
 
     def _menu_change(self, d: int) -> None:
@@ -918,8 +965,11 @@ class TVWindow(QMainWindow):
         elif action == "right":
             self._menu_change(1)
         elif action == "enter":
-            if self.menu.ROWS[self.menu.row] == "close":
+            row = self.menu.ROWS[self.menu.row]
+            if row == "close":
                 self.menu.close()
+            elif row in ("ondemand", "favourite"):
+                self._menu_action(row)
             else:
                 self._menu_change(1)
         elif action in ("menu", "quit", "last_channel", "info"):
@@ -927,11 +977,12 @@ class TVWindow(QMainWindow):
         self.video.update()
 
     def _on_restart(self):
-        if self.vod.mode in ("play", "promo"):
+        if self.vod.mode:
             if self.vod.playing:
                 self._apply_track_prefs(self.vod.track_key())
             self.vod.on_restart()
-            self._apply_zoom()
+            if self.vod.mode in ("play", "promo") and not (self.vod.p or {}).get("grow"):
+                self._apply_zoom()
             if self.tuning:
                 self._finish_tuning(self.token)
             return
@@ -987,7 +1038,7 @@ class TVWindow(QMainWindow):
             self._stalls = 0
 
     def _on_ended(self, reason: str):
-        if self.vod.mode in ("play", "promo"):
+        if self.vod.mode:
             if not self._closing:
                 self.vod.on_ended(reason)
             return

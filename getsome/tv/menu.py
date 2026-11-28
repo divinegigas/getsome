@@ -57,10 +57,13 @@ def track_label(t: dict) -> str:
 
 
 class TrackMenu:
-    ROWS = ("audio", "subs", "picture", "sides", "volume", "ad_volume", "close")
+    BASE = ("audio", "subs", "picture", "sides", "volume", "ad_volume")
+    ROWS = BASE + ("close",)
 
     def __init__(self):
         self.open = False
+        self.od: dict | None = None      # On Demand title for the extra rows ({} = not in the library)
+        self.od_fav = False
         self.row = 0
         self.audio: list[dict] = []
         self.subs: list[dict] = []
@@ -74,7 +77,9 @@ class TrackMenu:
 
     # ---------------------------------------------------------------- state
     def show(self, tracks: list[dict], zoom: str = "normal", sides: str = "black",
-             volume: int = 100, ad_volume: int = 50) -> None:
+             volume: int = 100, ad_volume: int = 50, extras: tuple = ()) -> None:
+        """extras: "ondemand" (Watch On Demand) and/or "favourite" rows, filled from self.od."""
+        self.ROWS = self.BASE + tuple(extras) + ("close",)
         self.volume, self.ad_volume = int(volume), int(ad_volume)
         self.zoom_i = ZOOM_KEYS.index(zoom) if zoom in ZOOM_KEYS else 0
         self.sides_i = 1 if sides == "blur" else 0
@@ -125,7 +130,7 @@ class TrackMenu:
         if not self.open:
             return
         unit = h / 1080.0
-        pw, ph = 960 * unit, 804 * unit
+        pw, ph = 960 * unit, (202 + 86 * len(self.ROWS)) * unit
         x0, y0 = (w - pw) / 2, (h - ph) / 2
         p.save()
         p.fillRect(QRectF(0, 0, w, h), QColor(0, 0, 0, 120))
@@ -155,8 +160,21 @@ class TrackMenu:
             ("VOLUME", ("slider", self.volume / VOLUME_MAX, str(self.volume)), True),
             ("ADS", ("slider", self.ad_volume / 100,
                      "Silent" if not self.ad_volume else f"{self.ad_volume}%"), True),
-            ("CLOSE", "", True),
         ]
+        od = self.od
+        title = (od or {}).get("title", "")
+        for extra in self.ROWS[len(self.BASE):-1]:
+            if od is None:
+                rows.append(("ON DEMAND" if extra == "ondemand" else "FAVOURITE", ("action", "Looking…"), False))
+            elif not od:
+                rows.append(("ON DEMAND" if extra == "ondemand" else "FAVOURITE",
+                             ("action", "Not in your library folders"), False))
+            elif extra == "ondemand":
+                rows.append(("ON DEMAND", ("action", f"Watch “{title}”"), True))
+            else:
+                rows.append(("FAVOURITE", ("action", "♥ In favourites  (OK removes)" if self.od_fav
+                                           else f"♡ Add “{title}”"), True))
+        rows.append(("CLOSE", "", True))
         y = y0 + 130 * unit
         for i, (label, value, active) in enumerate(rows):
             sel = i == self.row
@@ -168,7 +186,17 @@ class TrackMenu:
             p.setPen(QColor(CYAN) if sel else QColor(150, 140, 210))
             fm = QFontMetricsF(p.font())
             p.drawText(QPointF(box.left() + 26 * unit, box.center().y() + fm.ascent() / 2.6), label)
-            if isinstance(value, tuple):          # a slider: bar + number
+            if isinstance(value, tuple) and value[0] == "action":     # press OK
+                p.setFont(font("text", int(34 * unit)))
+                fm = QFontMetricsF(p.font())
+                vx = box.left() + 260 * unit
+                txt = fm.elidedText(value[1], Qt.ElideRight, box.width() - 360 * unit)
+                p.setPen(QColor("#ffffff") if active else QColor(120, 110, 160))
+                p.drawText(QPointF(vx, box.center().y() + fm.ascent() / 2.6), txt)
+                if sel and active:
+                    p.setPen(QColor(YELLOW))
+                    p.drawText(QPointF(box.right() - 70 * unit, box.center().y() + fm.ascent() / 2.6), "OK")
+            elif isinstance(value, tuple):          # a slider: bar + number
                 _kind, frac, num = value
                 vx = box.left() + 260 * unit
                 bar = QRectF(vx, box.center().y() - 9 * unit, box.width() * 0.44, 18 * unit)

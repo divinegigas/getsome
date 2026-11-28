@@ -603,6 +603,28 @@ part-watched things, OK opens the browser; the BACK menu switches between cable 
   as cable box through `getsome serve` (catalog, restriction, posters, streaming, positions), XCable colours.
   **Not tested**: a real library's size (catalog build time on the external drive; first run reads every
   tvshow.nfo/movie NFO), real remotes, Bazzite over Wi-Fi.
+- **Round 2 (28 Nov, owner: "looks great on the main PC", asked for these)**:
+  * Browsing music: the guide's tracks (`assets_gen.guide_playlist`, the Settings choice) on the main mpv at
+    `BGM_LEVEL` 14 % of the TV volume in home/details (`OnDemand._bgm_start`); `TVWindow._apply_volume` asks
+    `vod.volume_factor()` (promo 60 %, preview 70 %, music 14 %, playing 100 %).
+  * Hover preview: resting `HOVER_S` 8 s on a home tile plays its next-up episode / film (resume point) in the
+    backdrop area: the main mpv with `video-margin-ratio-left/bottom` = 0.30 / 0.40 and panscan ("zoom");
+    the home paint leaves that rectangle unpainted. After `PREVIEW_S` 8 s of picture (or OK) `_promote()` →
+    `play(keep=True)`: no reload, margins animate to 0 over 0.6 s, then the show's own zoom. Any other button
+    cancels (music comes back); BACK cancels without opening the menu. One decoder throughout.
+  * Cable MENU rows "ON DEMAND  Watch “Title”" and "FAVOURITE": `TVWindow._menu_extras` looks the playing
+    file up with `ondemand.find_item(path)` (realpath under a show folder / film file; head-end call
+    `ondemand_find`, NO_LOCK) in the background; OK opens that show's page on that episode
+    (`OnDemand.open_item`). Not offered on locked restricted channels. While playing On Demand, MENU has the
+    favourite row.
+  * Favourites: `ondemand_favourites.json` (per computer, newest first, kept by "Clear viewing history"),
+    a "Favourites" row after Continue watching, and a ♥ button on every show/film page.
+  * Made-up covers: titles without a poster (or backdrop) get `ondemand_art/<sha>-poster.jpg` (600x900: a frame
+    from 30 % into the film / 2nd episode, darkened lower half, "TV SERIES"/"FEATURE FILM", the title in the
+    edition's text font with an accent outline, year) and `-fanart.jpg` (the frame), made with ffmpeg
+    `drawtext` (textfile=, expansion=none) in a background thread on whichever computer builds the catalog
+    (the head-end for boxes). `catalog()` fills them in on every call (`_with_art`) and reports
+    `art_pending`; TV mode re-asks every 20 s while some are pending. `ART_VERSION` remakes them.
 - Ideas next: search / A–Z jump (number keys could jump letters, but digits currently mean "go to channel"),
   trailers or a live preview behind the home backdrop, "On Demand" row in the guide, Android support.
 

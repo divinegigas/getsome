@@ -269,6 +269,7 @@ def install() -> bool:
             return {"items": [], "note": msg}
     ondemand.catalog = od_catalog
     ondemand.show_detail = lambda folder: call("ondemand_show", folder, timeout=30)
+    ondemand.find_item = safe(lambda path: call("ondemand_find", path, timeout=30), dict)
     model.load = lambda: [model.Channel(r["number"], r["name"], restricted=True, lock_mode=r["lock_mode"],
                                         free_from=r["free_from"], free_to=r["free_to"])
                           for r in _info.get("restricted", [])]

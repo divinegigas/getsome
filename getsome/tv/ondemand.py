@@ -4,7 +4,9 @@ Modes (OnDemand.mode)
   None      cable TV as usual
   "promo"   the On Demand channel (settings.ondemand_channel, default 1): clips of things you were
             watching and things recently added, with their art; OK opens On Demand
-  "home"    rows of posters: Continue watching, Recently added, TV shows, Movies, then genres
+  "home"    rows of posters: Continue watching, Favourites, Recently added, TV shows, Movies, then
+            genres. Very quiet guide music plays underneath. Resting on a title for 8 s plays a preview
+            in the backdrop; 8 s more and it grows to full screen and simply carries on playing
   "details" one show (play/resume, seasons, episodes) or one film (play/resume/start over)
   "play"    full-screen playback with an on-screen bar: OK pause, Left/Right skip (hold to go faster),
             MENU audio/subtitles/picture, BACK stop; the next episode follows by itself
@@ -45,6 +47,12 @@ PROMO_SECONDS = 16          # each clip on the On Demand channel
 NEXT_CARD_S = 25            # "next episode" card for the last this-many seconds of an episode
 SAVE_EVERY = 10             # seconds between position saves while playing
 OSD_S = 4.0
+HOVER_S = 8.0               # resting on a title this long starts its preview in the backdrop...
+PREVIEW_S = 8.0             # ...and after this long the preview becomes the real thing
+GROW_S = 0.6                # the preview growing to full screen
+BGM_LEVEL = 0.14            # browsing music, as a share of the TV volume
+PREVIEW_LEVEL = 0.7
+HERO_LEFT, HERO_H = 0.30, 0.60     # the backdrop area of the home screen (share of width / height)
 
 
 def _hms(sec: float) -> str:
@@ -262,6 +270,11 @@ class OnDemand:
         self.det: dict | None = None
         self.p: dict | None = None        # what's playing
         self.promo: dict | None = None
+        self.pv: dict | None = None       # the preview playing in the home screen's backdrop
+        self.bgm = False                  # the quiet browsing music is playing
+        self._pv_failed: set = set()
+        self._art_pending = 0
+        self._cat_at = 0.0
         self._last_paint = time.monotonic()
         self._last_input = 0.0
         self.tick_timer = QTimer(win, interval=250, timeout=self._tick)
@@ -284,7 +297,7 @@ class OnDemand:
     def animating(self) -> bool:
         if self.mode is None:
             return False
-        if self.mode in ("promo", "play"):
+        if self.mode in ("promo", "play") or self.pv:
             return True
         busy = self._dirty or time.monotonic() - self._last_input < 1.2 or self.items is None
         self._dirty = False
@@ -311,6 +324,8 @@ class OnDemand:
             cat = cat or {"items": [], "note": "Couldn't read the library."}
             self.items = list(cat.get("items") or [])
             self.note = cat.get("note") or ""
+            self._art_pending = int(cat.get("art_pending") or 0)
+            self._cat_at = time.monotonic()
             self._build_rows()
             self._dirty = True
             if then:
@@ -337,6 +352,9 @@ class OnDemand:
                          "entries": [{"item": c["item"], "path": c["path"], "label": c["label"],
                                       "fraction": c["fraction"], "resume": c["resume"], "cont": True}
                                      for c in cont[:20]]})
+        favs = [by_id[i] for i in ondemand.favourites() if i in by_id]
+        if favs:
+            rows.append({"title": "Favourites", "kind": "poster", "entries": [{"item": i} for i in favs]})
         recent = sorted((i for i in items if i.get("added")), key=lambda i: -i["added"])[:24]
         if recent:
             rows.append({"title": "Recently added", "kind": "poster", "entries": [{"item": i} for i in recent]})
@@ -406,15 +424,130 @@ class OnDemand:
             w.hiss.stop()
         QTimer.singleShot(ms, clear)
 
-    def open_home(self, select: dict | None = None) -> None:
+    # -------------------------------------------------------------- music, preview window
+    def volume_factor(self) -> float:
+        """Share of the TV volume for what On Demand is playing right now."""
+        if self.mode == "promo":
+            return 0.6
+        if self.mode in ("home", "details"):
+            return PREVIEW_LEVEL if self.pv else BGM_LEVEL
+        return 1.0
+
+    def _margins(self, left: float = 0.0, top: float = 0.0, right: float = 0.0, bottom: float = 0.0) -> None:
+        """Where mpv draws the picture, as shares of the screen (the preview sits in the backdrop)."""
+        if getattr(self, "_margins_now", (0.0, 0.0, 0.0, 0.0)) == (left, top, right, bottom):
+            return
+        pl = self.win.video.player
+        for k, v in (("left", left), ("top", top), ("right", right), ("bottom", bottom)):
+            try:
+                pl[f"video-margin-ratio-{k}"] = max(0.0, min(0.95, v))
+            except Exception as e:
+                _log.debug("margin %s: %s", k, e)
+        self._margins_now = (left, top, right, bottom)
+
+    def _bgm_start(self) -> None:
+        """Very quiet guide music while browsing (the guide's own tracks, as chosen in Settings)."""
+        if self.mode not in ("home", "details") or self.pv:
+            return
+        from .. import assets_gen
+
+        self._margins()
+        playlist = [str(x) for x in assets_gen.guide_playlist()]
+        if not playlist:
+            self.win.video.stop()
+            self.bgm = False
+            return
+        self.bgm = True
+        self.win._apply_volume()
+        self.win.video.load_playlist(playlist, shuffle=True)
+        self.win.video.set_muted(False)
+
+    def _next_up_for(self, item: dict, eps: list[dict]):
+        """(episode, resume seconds, verb) for a show's Play button."""
+        if not eps:
+            return None
+        it = self.history.items.get(item["id"]) or {}
+        paths_ = [e["path"] for e in eps]
+        last = it.get("last")
+        if last in paths_:
+            i = paths_.index(last)
+            if not self.history.done(last):
+                return eps[i], self.history.resume_at(last), "Resume"
+            if i + 1 < len(eps):
+                return eps[i + 1], self.history.resume_at(eps[i + 1]["path"]), "Play"
+            return eps[0], 0.0, "Play again"
+        return eps[0], self.history.resume_at(eps[0]["path"]), "Play"
+
+    def _hover_tick(self) -> None:
+        """Resting on a title: after HOVER_S its preview starts in the backdrop."""
         w = self.win
+        if (self.mode != "home" or self.pv or w.exit_menu.open or w.menu.open or w.state.pin_entry is not None
+                or time.monotonic() - self._last_input < HOVER_S):
+            return
+        e = self._entry()
+        if not e or not e.get("item"):
+            return
+        it = e["item"]
+        if (it["id"], e.get("cont")) in self._pv_failed:
+            return
+        self.pv = {"item": it, "entry": e, "path": None, "start": 0.0, "ep": None, "t_loaded": None}
+        if e.get("cont"):
+            self._pv_go(e["path"], e["resume"], None)
+        elif it["kind"] == "movie":
+            self._pv_go(it["path"], self.history.resume_at(it["path"]), None)
+        else:
+            folder = it["folder"]
+
+            def got(detail, pv=self.pv):
+                if self.pv is not pv:
+                    return
+                up = self._next_up_for(it, ondemand.episodes_in_order(detail or {}))
+                if up:
+                    self._pv_go(up[0]["path"], up[1], up[0])
+                else:
+                    self._pv_failed.add((it["id"], None))
+                    self.pv = None
+            if folder in self._details_cache:
+                got(self._details_cache[folder])
+            else:
+                self._run_bg(lambda: self._detail(folder), got)
+
+    def _pv_go(self, path: str, start: float, ep: dict | None) -> None:
+        pv = self.pv
+        if not pv:
+            return
+        pv.update(path=path, start=start, ep=ep)
+        self.bgm = False
+        self._margins(HERO_LEFT, 0.0, 0.0, 1.0 - HERO_H)
+        self.win._set_zoom("zoom")             # fill the backdrop area, no bars
+        self.win._apply_volume()
+        self.win.video.load(path, start=start if start > 1 else None)
+        _log.info("on demand: preview of %s", os.path.basename(path))
+
+    def _pv_stop(self, music: bool = True) -> None:
+        if not self.pv:
+            return
+        self.pv = None
+        self.win._set_zoom("normal")
+        self._margins()
+        if music:
+            self._bgm_start()
+
+    def _promote(self) -> None:
+        """The preview becomes the real thing: it grows to full screen and keeps playing."""
+        pv, self.pv = self.pv, None
+        if not pv or not pv["path"]:
+            return
+        self.play(pv["item"], pv["path"], pv["start"], pv["ep"], back_to="home", keep=True)
+
+    def open_home(self, select: dict | None = None, then=None) -> None:
         self._stop_promo()
         self._save_progress(final=True)
         self._quiet_channel()
-        w.video.stop()
-        w.video.set_muted(False)
         self.p = None
+        self.pv = None
         self.mode = "home"
+        self._bgm_start()
         self._flash()
         self.tick_timer.start()
         self._last_input = time.monotonic()
@@ -430,12 +563,22 @@ class OnDemand:
                         self.col_x[r["title"]].v = self.col_x[r["title"]].target = max(0, ci - 2)
                         return
         if self.items is None:
-            self.load_catalog(then=pick)
+            self.load_catalog(then=lambda: (pick(), then and then()))
         else:
             self.history = ondemand.History()
             self._build_rows()
             pick()
+            if then:
+                then()
             self.load_catalog()           # pick up a rescan made while TV mode was open
+
+    def open_item(self, item_id: str, episode: str = "") -> None:
+        """MENU → Watch On Demand on a channel: straight to that show (on that episode) or film."""
+        def go():
+            item = next((i for i in self.items or [] if i["id"] == item_id), None)
+            if item is not None and self._visible(item):
+                self.open_details(item, episode=episode)
+        self.open_home(then=go)
 
     def leave(self) -> None:
         """Back to cable (the caller tunes a channel)."""
@@ -448,7 +591,10 @@ class OnDemand:
         was = self.mode
         self.mode = None
         self.p = None
+        self.pv = None
+        self.bgm = False
         self.det = None
+        self._margins()
         if was in ("play", "home", "details"):
             try:
                 self.win.video.stop()
@@ -463,6 +609,8 @@ class OnDemand:
     def start_promo(self) -> None:
         self.mode = "promo"
         self.p = None
+        self.pv = None
+        self._margins()
         self.promo = {"entries": [], "i": -1, "t0": time.monotonic(), "loaded": False, "ready": False}
         self.tick_timer.start()
 
@@ -564,20 +712,29 @@ class OnDemand:
 
     # -------------------------------------------------------------- playback
     def play(self, item: dict, path: str, start: float = 0.0, ep: dict | None = None,
-             back_to: str = "details") -> None:
+             back_to: str = "details", keep: bool = False) -> None:
+        """Full-screen playback. keep: the file is already playing (a preview growing up)."""
         w = self.win
         self._save_progress(final=True)
         self._stop_promo()
         self._quiet_channel()
+        self.pv = None
+        self.bgm = False
         self.mode = "play"
-        self.p = {"item": item, "path": path, "ep": ep, "eps": None, "loaded": False, "paused": False,
+        self.p = {"item": item, "path": path, "ep": ep, "eps": None, "loaded": keep, "paused": False,
                   "osd_until": time.monotonic() + OSD_S, "seek": None, "seek_n": 0, "seek_last": 0.0,
                   "next_dismissed": False, "last_save": time.monotonic(), "back_to": back_to, "error": "",
-                  "started": time.monotonic(), "pos": start, "dur": 0.0}
-        w.state.black = True
+                  "started": time.monotonic(), "pos": start, "dur": 0.0,
+                  "grow": time.monotonic() if keep else None}
         w.video.set_muted(False)
         w._apply_volume()
-        w.video.load(path, start=start if start > 1 else None)
+        if keep:
+            w._apply_track_prefs(self.track_key())
+        else:
+            self._margins()
+            w._set_zoom("normal")
+            w.state.black = True
+            w.video.load(path, start=start if start > 1 else None)
         self.tick_timer.start()
         _log.info("on demand: playing %s from %.0fs", os.path.basename(path), start)
         if item["kind"] == "show":
@@ -624,7 +781,9 @@ class OnDemand:
 
     def on_restart(self) -> None:
         """mpv: frames are flowing (after a load or a seek)."""
-        if self.mode == "play" and self.p:
+        if self.pv and self.pv["path"] and self.pv["t_loaded"] is None:
+            self.pv["t_loaded"] = time.monotonic()
+        elif self.mode == "play" and self.p:
             self.p["loaded"] = True
             self.win.state.black = False
         elif self.mode == "promo" and self.promo:
@@ -634,6 +793,10 @@ class OnDemand:
 
     def on_ended(self, reason: str) -> None:
         if reason != "error":
+            return
+        if self.pv:
+            self._pv_failed.add((self.pv["item"]["id"], self.pv["entry"].get("cont")))
+            self._pv_stop()
             return
         if self.mode == "play" and self.p and not self.p["error"]:
             self.p["error"] = "Couldn't play this file."
@@ -681,6 +844,7 @@ class OnDemand:
             self.mode = "home"
             self._build_rows()
         self._last_input = time.monotonic()
+        self._bgm_start()
 
     def _tick(self) -> None:
         if self.mode == "play" and self.p:
@@ -702,6 +866,14 @@ class OnDemand:
             if eof or (dur and pos is not None and pos >= dur - 0.4 and not p["paused"]):
                 self._finished()
         elif self.mode in ("home", "details"):
+            now = time.monotonic()
+            if self.pv and self.pv["t_loaded"] and now - self.pv["t_loaded"] >= PREVIEW_S:
+                self._promote()
+                return
+            self._hover_tick()
+            if self._art_pending and now - self._cat_at > 20 and not self._loading:
+                self._cat_at = now
+                self.load_catalog()          # covers being made on the main PC: pick them up
             locks = frozenset(self.win._locked_numbers())
             if self.items is not None and locks != self._locks_seen:
                 self._build_rows()            # PIN entered, or restricted titles locked again
@@ -743,10 +915,13 @@ class OnDemand:
         self.win.video.seek_abs(target)
 
     # -------------------------------------------------------------- details
-    def open_details(self, item: dict) -> None:
+    def open_details(self, item: dict, episode: str = "") -> None:
+        self._pv_stop(music=False)
         self.mode = "details"
         self.det = {"item": item, "detail": None, "eps": [], "focus": "buttons", "btn": 0, "season": 0,
-                    "ep": 0, "ep_x": _Ease(), "loading": item["kind"] == "show"}
+                    "ep": 0, "ep_x": _Ease(), "loading": item["kind"] == "show", "want": episode}
+        if not self.bgm:
+            self._bgm_start()
         if item["kind"] == "show":
             folder = item["folder"]
             if folder in self._details_cache:
@@ -762,34 +937,23 @@ class OnDemand:
         d["loading"] = False
         d["detail"] = detail or {"seasons": []}
         d["eps"] = ondemand.episodes_in_order(d["detail"])
-        # open on the season and episode you're up to
+        # open on the episode asked for (from a channel), else the one you're up to
         up = self._next_up()
-        if up and up[0]:
-            for si, s in enumerate(d["detail"]["seasons"]):
-                for ei, e in enumerate(s["episodes"]):
-                    if e["path"] == up[0]["path"]:
-                        d["season"], d["ep"] = si, ei
-                        d["ep_x"].v = d["ep_x"].target = max(0, ei - 1)
+        want = d.get("want") or (up[0]["path"] if up and up[0] else "")
+        for si, s in enumerate(d["detail"]["seasons"]):
+            for ei, e in enumerate(s["episodes"]):
+                if e["path"] == want:
+                    d["season"], d["ep"] = si, ei
+                    d["ep_x"].v = d["ep_x"].target = max(0, ei - 1)
+                    if d.get("want"):
+                        d["focus"] = "episodes"
         self._refresh_details()
         self._dirty = True
 
     def _next_up(self):
         """(episode, resume seconds, verb) for a show's Play button."""
         d = self.det
-        eps = d["eps"] if d else []
-        if not eps:
-            return None
-        it = self.history.items.get(d["item"]["id"]) or {}
-        paths_ = [e["path"] for e in eps]
-        last = it.get("last")
-        if last in paths_:
-            i = paths_.index(last)
-            if not self.history.done(last):
-                return eps[i], self.history.resume_at(last), "Resume"
-            if i + 1 < len(eps):
-                return eps[i + 1], self.history.resume_at(eps[i + 1]["path"]), "Play"
-            return eps[0], 0.0, "Play again"
-        return eps[0], self.history.resume_at(eps[0]["path"]), "Play"
+        return self._next_up_for(d["item"], d["eps"]) if d else None
 
     def _refresh_details(self) -> None:
         d = self.det
@@ -814,6 +978,7 @@ class OnDemand:
                 btns.append(("wait", "Loading episodes…"))
             else:
                 btns.append(("wait", "No episodes found"))
+        btns.append(("fav", "♥  In favourites" if ondemand.is_favourite(it["id"]) else "♡  Add to favourites"))
         d["buttons"] = btns
         d["btn"] = min(d["btn"], len(btns) - 1)
 
@@ -827,7 +992,10 @@ class OnDemand:
         it = d["item"]
         if d["focus"] == "buttons":
             key = d["buttons"][d["btn"]][0]
-            if it["kind"] == "movie":
+            if key == "fav":
+                ondemand.set_favourite(it["id"], not ondemand.is_favourite(it["id"]))
+                self._refresh_details()
+            elif it["kind"] == "movie":
                 if key == "play":
                     self.play(it, it["path"], self.history.resume_at(it["path"]))
                 elif key == "restart":
@@ -884,6 +1052,9 @@ class OnDemand:
                 return True
             self._stop_playback()
             return True
+        if self.mode == "home" and self.pv:
+            self._pv_stop()
+            return True
         if self.mode == "details":
             if self.det and self.det["focus"] == "episodes":
                 self.det["focus"] = "seasons"
@@ -910,6 +1081,13 @@ class OnDemand:
             return self._play_key(action)
         if self.mode == "details":
             return self._details_key(action)
+        if action in ("volume_up", "volume_down", "mute", "fullscreen"):
+            return False
+        if self.pv:
+            if action == "enter" and self.pv["path"]:
+                self._promote()                  # OK during the preview: watch it now
+                return True
+            self._pv_stop()
         return self._home_key(action)
 
     def _play_key(self, action: str) -> bool:
@@ -1046,28 +1224,52 @@ class OnDemand:
         _txt(p, text, int(25 * unit), 60 * unit, h - 26 * unit, DIM)
 
     def _backdrop(self, p: QPainter, w: int, h: int, item: dict | None, top_h: float, unit: float) -> None:
-        """The selected title's fanart in the top right, fading into the background."""
-        p.fillRect(QRectF(0, 0, w, h), BG)
+        """The selected title's fanart in the top right, fading into the background; while a preview
+        plays, mpv draws it in that same area and only the surroundings are painted."""
+        r = QRectF(w * HERO_LEFT, 0, w * (1 - HERO_LEFT), top_h)
+        live = bool(self.pv and self.pv["t_loaded"])
+        if live:
+            p.fillRect(QRectF(0, 0, r.left() + 1, h), BG)
+            p.fillRect(QRectF(r.left(), top_h - 1, w - r.left(), h - top_h + 1), BG)
+            a = _ease((time.monotonic() - self.pv["t_loaded"]) / 0.6)
+            if a < 1:                         # fade from the backdrop into the moving picture
+                img = self._img((item or {}).get("art", {}).get("fanart") or "", 1920 if h > 1080 else 1280)
+                if img is not None:
+                    p.setOpacity(1 - a)
+                    _cover(p, img, r, align_top=True)
+                    p.setOpacity(1)
+        else:
+            p.fillRect(QRectF(0, 0, w, h), BG)
         if not item:
             return
         art = item.get("art") or {}
         path = art.get("fanart") or art.get("landscape") or ""
         if path != self._hero[0]:
             self._hero = (path, time.monotonic())
-        img = self._img(path, 1920 if h > 1080 else 1280)
-        if img is None:
+        img = None if live else self._img(path, 1920 if h > 1080 else 1280)
+        if img is None and not live:
             return
-        r = QRectF(w * 0.30, 0, w * 0.70, top_h)
-        a = _ease((time.monotonic() - self._hero[1]) / 0.45)
-        p.setOpacity(a)
-        _cover(p, img, r, align_top=True)
-        p.setOpacity(1)
+        a = 1.0 if live else _ease((time.monotonic() - self._hero[1]) / 0.45)
+        if img is not None:
+            p.setOpacity(a)
+            _cover(p, img, r, align_top=True)
+            p.setOpacity(1)
         _gradient(p, QRectF(r.left() - 1, 0, r.width() * 0.55, top_h), True,
                   ((0, BG), (0.35, QColor(7, 0, 22, 200)), (1, QColor(7, 0, 22, 0))))
         _gradient(p, QRectF(r.left(), top_h * 0.55, r.width(), top_h * 0.45 + 1), False,
                   ((0, QColor(7, 0, 22, 0)), (1, BG)))
         if a < 1:
             self._dirty = True
+        if live:
+            left = self.pv["t_loaded"] + PREVIEW_S - time.monotonic()
+            if left < 4.5:
+                msg = f"PLAYING IN {max(1, int(left + 0.99))}   ·   OK now   ·   any button cancels"
+                p.setFont(font("text", int(28 * unit)))
+                tw = QFontMetricsF(p.font()).horizontalAdvance(msg)
+                box = QRectF(w - tw - 100 * unit, top_h - 92 * unit, tw + 40 * unit, 50 * unit)
+                p.fillRect(box, QColor(7, 0, 22, 200))
+                p.fillRect(QRectF(box.left(), box.top(), 5 * unit, box.height()), QColor(PINK))
+                _txt(p, msg, int(28 * unit), box.left() + 22 * unit, box.top() + 35 * unit, YELLOW)
 
     def _hero_text(self, p: QPainter, item: dict, x: float, y: float, max_w: float, unit: float,
                    extra: str = "", plot_lines: int = 3, plot: str | None = None) -> float:
@@ -1206,7 +1408,7 @@ class OnDemand:
         elif e and e.get("lock"):
             _chrome_text(p, "Restricted titles", int(72 * unit), 80 * unit, 260 * unit)
             _txt(p, "Some titles are on restricted channels. Press OK and enter the PIN to show them.",
-                 int(30 * unit), 80 * unit, 330 * unit, CYAN, max_w=w * 0.5)
+                 int(30 * unit), 80 * unit, 330 * unit, CYAN, max_w=w * 0.88)
         moving = self.row_y.step(dt)
         y0 = h * 0.585
         row_h = {"poster": 330 * unit, "wide": 250 * unit, "lock": 330 * unit}
@@ -1452,6 +1654,17 @@ class OnDemand:
             return
         it = pl["item"]
         now = time.monotonic()
+        if pl.get("grow"):                       # a preview growing to full screen
+            f = _ease((now - pl["grow"]) / GROW_S)
+            if f >= 1:
+                pl["grow"] = None
+                self._margins()
+                self.win._set_zoom("normal")
+                self.win._apply_zoom()
+            else:
+                self._margins(HERO_LEFT * (1 - f), 0.0, 0.0, (1 - HERO_H) * (1 - f))
+                p.fillRect(QRectF(0, 0, w * HERO_LEFT * (1 - f), h), BG)
+                p.fillRect(QRectF(0, h * (1 - (1 - HERO_H) * (1 - f)), w, h), BG)
         if not pl["loaded"] or pl["error"]:
             p.fillRect(QRectF(0, 0, w, h), BG)
             art = it.get("art") or {}

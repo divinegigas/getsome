@@ -633,6 +633,11 @@ part-watched things, OK opens the browser; the BACK menu switches between cable 
   there); Backspace deletes while there's text, then means BACK. Matching (`_run_search`): accents and
   punctuation ignored, every word must be in the title or genres/year; title-starts > a word starts >
   title contains > genre/year. OK opens the title; BACK from its page returns to the search (`det["back"]`).
+- **Episode stills (28 Nov, owner request)**: episodes without a `-thumb` image get a 480 px frame from 35 % in
+  (`make_episode_thumb`, `ondemand_art/episodes/<sha>.jpg`, `THUMB_VERSION`). `show_detail()` fills in the ones
+  that exist and queues the rest (one background worker, the show being looked at first) and returns
+  `thumbs_pending`; the show page asks again every 4 s while any are pending. Show covers stay as they were
+  (the owner likes them). Made on the head-end for cable boxes.
 - Ideas next: A–Z jump (number keys could jump letters, but digits currently mean "go to channel"),
   trailers or a live preview behind the home backdrop, "On Demand" row in the guide, Android support.
 

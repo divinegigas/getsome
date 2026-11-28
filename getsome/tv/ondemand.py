@@ -874,6 +874,18 @@ class OnDemand:
                 self._promote()
                 return
             self._hover_tick()
+            d = self.det
+            if (self.mode == "details" and d and d.get("detail") and d["detail"].get("thumbs_pending")
+                    and now - d.get("stills_at", 0) > 4 and not d.get("refreshing")):
+                d["refreshing"] = True       # episode stills being made: ask again for the new ones
+                folder, it = d["item"]["folder"], d["item"]
+
+                def got(detail, it=it, d=d):
+                    d["refreshing"] = False
+                    if detail:
+                        self._details_cache[it["folder"]] = detail
+                    self._details_loaded(it, detail)
+                self._run_bg(lambda: ondemand.show_detail(folder), got)
             if self._art_pending and now - self._cat_at > 20 and not self._loading:
                 self._cat_at = now
                 self.load_catalog()          # covers being made on the main PC: pick them up
@@ -937,6 +949,13 @@ class OnDemand:
         d = self.det
         if not d or d["item"]["id"] != item["id"]:
             return
+        if not d["loading"] and d.get("detail"):        # stills made since: swap them in, keep the place
+            d["detail"] = detail or d["detail"]
+            d["eps"] = ondemand.episodes_in_order(d["detail"])
+            d["stills_at"] = time.monotonic()
+            self._dirty = True
+            return
+        d["stills_at"] = time.monotonic()
         d["loading"] = False
         d["detail"] = detail or {"seasons": []}
         d["eps"] = ondemand.episodes_in_order(d["detail"])

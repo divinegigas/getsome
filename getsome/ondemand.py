@@ -240,9 +240,107 @@ def _show_detail(folder: str, stamp: float) -> dict:
 
 
 def show_detail(folder: str) -> dict:
-    """{"folder", "title", "seasons": [{"season", "name", "episodes": [{path, code, title, plot, thumb...}]}]}"""
+    """{"folder", "title", "seasons": [{"season", "name", "episodes": [{path, code, title, plot, thumb...}]}],
+    "thumbs_pending": n}. Episodes without a still of their own get one made from a frame of the episode
+    (in the background; asking again later picks them up)."""
     stamp = _added(Path(folder), *[d for d in Path(folder).glob("*") if d.is_dir()])
-    return _show_detail(folder, stamp)
+    detail = _show_detail(folder, stamp)
+    missing = []
+    seasons = []
+    for sn in detail["seasons"]:
+        eps = []
+        for e in sn["episodes"]:
+            if not e["thumb"]:
+                f = _ep_thumb_file(e["path"])
+                if f.exists():
+                    e = {**e, "thumb": str(f), "made": True}
+                elif e["path"] not in _thumb_failed:
+                    missing.append(e["path"])
+            eps.append(e)
+        seasons.append({**sn, "episodes": eps})
+    if missing:
+        _queue_thumbs(missing)
+    return {**detail, "seasons": seasons, "thumbs_pending": len(missing)}
+
+
+# ------------------------------------------------------------------ episode stills made from the episode
+
+THUMB_VERSION = 1
+_thumb_q: list[list[str]] = []           # batches, newest (the show being looked at) first
+_thumb_cv = threading.Condition()
+_thumb_worker = False
+_thumb_failed: set[str] = set()
+_thumb_queued: set[str] = set()
+
+
+def _ep_thumb_file(path: str) -> Path:
+    import hashlib
+
+    return _art_dir() / "episodes" / (hashlib.sha1(f"{THUMB_VERSION}|{path}".encode()).hexdigest()[:24] + ".jpg")
+
+
+def _queue_thumbs(paths_: list[str]) -> None:
+    global _thumb_worker
+    new = [x for x in paths_ if x not in _thumb_queued]
+    with _thumb_cv:
+        if new:
+            _thumb_queued.update(new)
+            _thumb_q.insert(0, new)
+        else:                               # already waiting: move this show to the front
+            for i, batch in enumerate(_thumb_q):
+                if batch and batch[0] in paths_:
+                    _thumb_q.insert(0, _thumb_q.pop(i))
+                    break
+        _thumb_cv.notify()
+        if not _thumb_worker:
+            _thumb_worker = True
+            threading.Thread(target=_thumb_loop, name="ondemand-stills", daemon=True).start()
+
+
+def _thumb_loop() -> None:
+    while True:
+        with _thumb_cv:
+            while not any(_thumb_q):
+                _thumb_q.clear()
+                _thumb_cv.wait()
+            batch = next(b for b in _thumb_q if b)
+            path = batch.pop(0)
+        try:
+            if not make_episode_thumb(path):
+                _thumb_failed.add(path)
+        except Exception as e:
+            _log.debug("still for %s: %s", path, e)
+            _thumb_failed.add(path)
+        finally:
+            _thumb_queued.discard(path)
+
+
+def make_episode_thumb(path: str) -> bool:
+    """A 16:9 still from 35 % into the episode (past the opening titles), 480 px wide."""
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    out = _ep_thumb_file(path)
+    if out.exists():
+        return True
+    if not ffmpeg or not os.path.exists(path):
+        return False
+    out.parent.mkdir(parents=True, exist_ok=True)
+    dur = _duration(path)
+    tmp = out.with_suffix(".part.jpg")
+    for at in ([dur * 0.35, dur * 0.2] if dur else []) + [120.0, 10.0, 0.0]:
+        cmd = ["nice", "-n", "15"] if shutil.which("nice") else []
+        cmd += [ffmpeg, "-loglevel", "error", "-y", "-ss", f"{at:.1f}", "-i", path, "-frames:v", "1",
+                "-vf", "scale=480:-2", "-q:v", "4", str(tmp)]
+        try:
+            subprocess.run(cmd, timeout=60, check=False)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        if tmp.exists() and tmp.stat().st_size > 1500:
+            os.replace(tmp, out)
+            return True
+    return False
 
 
 def episodes_in_order(detail: dict) -> list[dict]:

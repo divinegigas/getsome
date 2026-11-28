@@ -27,7 +27,7 @@ TV mode. See `CLAUDE.md` for the brief and the ground rules, and
 | 5 Guide, overrides, settings, key-remap screen | ✅ guide, overrides and settings · ❌ remap screen (JSON file only) |
 | 6 Stretch: commercials at real break points | ✅ v2: cards (promos, trivia, lineups, on this day), five-beat product ads, six music styles · owner liked promo cards, found v1 product ads weak; **v2 not yet reported on** |
 | Session 3 | ✅ Steam Big Picture fix (confirmed), restricted channels with PIN + lock schedule, artwork cards + transitions |
-| On Demand (28 Nov) | 🔨 built: browse + play the whole library, channel 1 preview, BACK menu switch, cable box; see "On Demand" · **waiting on the owner's test** |
+| On Demand (28 Nov) | ✅ browse + play the whole library, channel 1 preview, search, favourites, previews, keep-watching corner picture, cable box; **confirmed by the owner on both PCs** ("everything works perfectly as we designed"); see "On Demand" |
 | Added along the way | ✅ movie channels, films in TV channels, up-next bumpers, 5 intermission looks, audio/subtitle menu, 20 guide tracks (RPG + metal/rock/punk/reggae/ska), guide preview window + sound toggle, exit menu, keep-awake, every-episode rotation, clean-up tool, new-episode check, usage dots in pickers, one-click updater, app menu + desktop shortcut, rename to Neon Cable 42 |
 
 ## What's built (and working)
@@ -536,6 +536,8 @@ the new-episode check, every-episode rotation, schedule upkeep, update button, e
 - IR remote: key names never reported; the exit menu listens on Backspace / Back / Esc / Q / Stop.
 
 ## Next steps (recommended order)
+0. **On Demand** is done and confirmed (see "On Demand"); new On Demand requests build on that section.
+   The air-mouse click fix ("Remote OK does nothing") is written but held back at the owner's request.
 1. **Owner feedback round** on Steam, PIN lock and artwork cards; tune whatever they flag. Possible
    follow-ups: "Fake product ads" default to None once their own ad folder exists; an artwork intermission
    look for movie channels (poster + fanart); lock badge on restricted rows in the guide.
@@ -562,10 +564,48 @@ the new-episode check, every-episode rotation, schedule upkeep, update button, e
   straight into TV mode.
 - Steam Big Picture / Steam Deck-style living-room polish, building on item 3.
 
-## On Demand (28 Nov, owner request; untested by the owner)
+## On Demand (28 Nov, built in one session at the owner's request; confirmed working on both PCs)
 A Netflix-style way to watch anything in the library folders, on the main PC and on a desktop cable box
 (not Android yet). Owner's choices: channel 1 is an On Demand "home" channel previewing recent and
 part-watched things, OK opens the browser; the BACK menu switches between cable and On Demand.
+Releases v2026.11.28 … v2026.11.28.7. No FS42 involvement at all (no schedules, no builds), so it can't
+affect the channels.
+
+**Status / owner feedback**: round 1 "looks great on the main PC"; after rounds 2–7 "everything works
+perfectly as we designed", on the main PC (Fedora KDE) and the Bazzite cable box. Each round below was
+asked for by the owner after trying the previous one. Untested by the owner: XCable's On Demand, very large
+libraries' first catalog build / cover making time (no complaints so far).
+
+**The owner's controls** (also on screen as hint lines; remote / keyboard / controller all work):
+| Where | Button | Does |
+|---|---|---|
+| Any channel | BACK → "Switch to On Demand", or tune channel 1 then OK | opens On Demand |
+| A channel | MENU → ON DEMAND / FAVOURITE rows | that show's page on that episode / add or remove favourite |
+| Home | ▲▼◀▶, OK | browse rows; OK = show/film page (Continue watching: resume straight away) |
+| Home | rest 3 s on a title | preview in the top-right box; 15 s later it carries on full screen (OK = now) |
+| Home, top row | ▲ ▲ | search |
+| Home | MENU on a Continue-watching tile | removes it from the row |
+| Show page | OK on buttons / season tabs / episodes; MENU | play, resume, first episode, ♥ favourite; MENU = watched/unwatched |
+| Search | on-screen keys or the remote's keyboard; ▶ to results; OK | type, pick a result; BACK = keyboard, then out |
+| Watching | OK pause · ◀▶ skip (faster when held) · INFO/▲▼ show the bar | |
+| Watching | MENU | audio, subtitles, picture, volumes, **CABLE Return to channel N**, ♥ favourite |
+| Watching | BACK | keeps playing in the corner while you browse (first BACK hides a "next episode" card) |
+| Corner picture | MENU / BACK on home | back to it full screen / stop it |
+| On Demand | digits, GUIDE, L, BACK menu "Switch to cable" | back to cable (the channel you came from) |
+
+**Files it keeps** (all in the data folder, per computer): `ondemand_catalog.json` (cache, rebuilt when the
+scans or channels change), `ondemand_history.json` (positions, watched, next episode: "Clear viewing
+history…" in Settings), `ondemand_favourites.json` (kept by that button), `ondemand_art/` (made-up covers,
+backdrops, `episodes/` stills; made on the head-end for boxes), `ondemand_thumbs/` (scaled pictures for quick
+browsing, pruned at 4000). Settings keys: `ondemand_channel`, `ondemand_preview_after`,
+`ondemand_preview_for`, `ondemand_music_volume`, `ondemand_preview_volume`.
+
+**Known gaps**: settings sliders apply the next time TV mode starts; the catalog only knows what the setup
+window's library scan found (new folders need Rescan in "Add shows", as for channels); "added" dates come
+from file/folder times (a copied-in old folder may count as new); restricted titles unlock with the same PIN
+session as the channels; the Android box has no On Demand.
+
+**How it's built** (newest rounds last):
 - **Data** (`getsome/ondemand.py`, no Qt): `catalog()` = every show/film from the setup window's scan caches
   (`library.cached()`, `cached_movies()`) + `tvshow.nfo`/movie NFO plot/year/tagline, `artwork.show_art/
   movie_art`, "added" time (newest mtime/ctime of the show folder + season folders, or the film file), and
@@ -583,7 +623,8 @@ part-watched things, OK opens the browser; the BACK menu switches between cable 
   Resume/Start over/Mark watched; season tabs; episode strip; MENU toggles watched), `play` (OSD with bar;
   OK pause; Left/Right skip 10 s, then 30 s, then 60 s while pressed repeatedly, one seek 650 ms after the
   last press; MENU = the normal audio/subtitle/picture menu, zoom remembered under the same key as on the
-  channels; "next episode" card for the last 25 s, then autoplay; BACK hides the card, then stops).
+  channels; "next episode" card for the last 25 s, then autoplay; BACK hides the card, then goes to the
+  corner picture: see "Keep watching while browsing" below).
   Pictures load in 3 background threads (`Images`; on a box via `cablebox.fetch`), scaled once into
   `data/ondemand_thumbs/` (pruned to 4000 files), 200 MB in memory.
 - **Window glue** (`tv/app.py`): `ONDEMAND_TYPE` channel added by `_channel_list` on
@@ -655,8 +696,9 @@ part-watched things, OK opens the browser; the BACK menu switches between cable 
   Playing anything else replaces it; Play on the same file just brings it back. `_tick` now runs
   `_play_tick` whenever `self.p` exists. Previews use the same 16:9 box now: **panscan inside
   video-margin-ratio drew striped garbage under llvmpipe**, so no zoom is used there any more.
-- Ideas next: A–Z jump (number keys could jump letters, but digits currently mean "go to channel"),
-  trailers or a live preview behind the home backdrop, "On Demand" row in the guide, Android support.
+- Ideas next (none asked for yet): A–Z jump in long rows (digits currently mean "go to channel"), an
+  "On Demand" row in the guide, Android box support (`HeadEnd.kt` would need the `ondemand_*` calls and its
+  own screens), sorting/filter options (unwatched only, by year), a per-show "skip intro" offset.
 
 ## Remote "OK does nothing" = air-mouse mode (28 Nov) · ready fix, NOT applied
 Owner report: OK stopped working on both PCs (Enter on the remote's keyboard still worked; re-running

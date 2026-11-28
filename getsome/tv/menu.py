@@ -321,9 +321,14 @@ class MusicMenu:
 
 
 class ExitMenu:
-    """BACK button: back to TV, quit to the setup window, or quit to the desktop."""
+    """BACK button: back to what you were watching, switch between cable and On Demand, quit to the
+    setup window, or quit to the desktop."""
 
-    OPTIONS = (("tv", "BACK TO TV"), ("setup", "QUIT TO SETUP"), ("desktop", "QUIT TO DESKTOP"))
+    CABLE = (("tv", "BACK TO TV"), ("ondemand", "SWITCH TO ON DEMAND"), ("setup", "QUIT TO SETUP"),
+             ("desktop", "QUIT TO DESKTOP"))
+    ON_DEMAND = (("tv", "BACK TO ON DEMAND"), ("cable", "SWITCH TO CABLE"), ("setup", "QUIT TO SETUP"),
+                 ("desktop", "QUIT TO DESKTOP"))
+    OPTIONS = CABLE
     AUTO_CLOSE_S = 20.0            # pressed by accident: drop back to TV
 
     def __init__(self):
@@ -331,7 +336,8 @@ class ExitMenu:
         self.row = 0
         self._touched = 0.0
 
-    def show(self) -> None:
+    def show(self, on_demand: bool = False) -> None:
+        self.OPTIONS = self.ON_DEMAND if on_demand else self.CABLE
         self.open = True
         self.row = 0
         self._touched = time.monotonic()
@@ -353,7 +359,7 @@ class ExitMenu:
         if not self.open:
             return
         unit = h / 1080.0
-        pw, ph = 820 * unit, 470 * unit
+        pw, ph = 820 * unit, (206 + 88 * len(self.OPTIONS)) * unit
         x0, y0 = (w - pw) / 2, (h - ph) / 2
         p.save()
         p.fillRect(QRectF(0, 0, w, h), QColor(0, 0, 0, 150))
@@ -387,5 +393,5 @@ class ExitMenu:
             y += 88 * unit
         p.setFont(font("text", int(26 * unit)))
         p.setPen(QColor(150, 140, 210))
-        p.drawText(QPointF(x0 + 60 * unit, y0 + ph - 24 * unit), "▲▼ choose     OK select     BACK return to TV")
+        p.drawText(QPointF(x0 + 60 * unit, y0 + ph - 24 * unit), "▲▼ choose     OK select     BACK close")
         p.restore()

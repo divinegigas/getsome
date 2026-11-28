@@ -134,6 +134,7 @@ def _info() -> dict:
         "channels": [{"number": c.number, "name": c.name, "network_type": c.network_type, "hidden": c.hidden}
                      for c in fs42.channels()],
         "guide_channel": int(s.get("guide_channel") or 0),
+        "ondemand_channel": int(s.get("ondemand_channel") or 0),
         "restricted": [{"number": c.number, "name": c.name, "lock_mode": c.lock_mode, "free_from": c.free_from,
                         "free_to": c.free_to} for c in model.load() if c.restricted],
         "restricted_pin": str(s.get("restricted_pin") or "69"),
@@ -168,7 +169,7 @@ def _guide_rows(names, when) -> list[dict]:
 
 
 def _calls() -> dict:
-    from . import ads, artwork, fs42
+    from . import ads, artwork, fs42, ondemand
 
     return {
         "info": lambda: _info(),
@@ -184,7 +185,13 @@ def _calls() -> dict:
         "episode_details": lambda path: list(ads.episode_details(path)),
         "artwork": artwork.for_programme,
         "movie_card": ads.movie_card,
+        # On Demand (no FS42 involved, so these don't wait for the schedule lock)
+        "ondemand_catalog": lambda: ondemand.catalog(),
+        "ondemand_show": lambda folder: ondemand.show_detail(folder),
     }
+
+
+NO_LOCK = {"ondemand_catalog", "ondemand_show"}
 
 
 # ------------------------------------------------------------------ HTTP
@@ -244,8 +251,11 @@ class _Handler(BaseHTTPRequestHandler):
             if fn is None:
                 return self._json({"error": "unknown call"}, 400)
             try:
-                with self.server.lock:          # FS42's queries aren't made for many threads
+                if body.get("fn") in NO_LOCK:
                     result = fn(*body.get("args", []))
+                else:
+                    with self.server.lock:          # FS42's queries aren't made for many threads
+                        result = fn(*body.get("args", []))
             except Exception as e:
                 _log.warning("call %s failed: %s", body.get("fn"), e)
                 return self._json({"error": str(e)}, 500)
@@ -436,6 +446,15 @@ def serve(port: int = PORT) -> None:
     started_sig = _signature()
     pidfile().write_text(f"{os.getpid()}\n{_code_version()}")
     threading.Thread(target=_discovery, args=(server,), name="discovery", daemon=True).start()
+
+    def warm():                          # On Demand's catalog: ready before a box asks for it
+        try:
+            from . import ondemand
+
+            ondemand.catalog()
+        except Exception as e:
+            _log.warning("on demand catalog: %s", e)
+    threading.Thread(target=warm, name="ondemand-warm", daemon=True).start()
 
     def keeper():
         nonlocal started_sig

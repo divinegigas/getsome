@@ -998,6 +998,28 @@ class SettingsDialog(QDialog):
         lay.addLayout(row)
         lay.addWidget(hint("Also switchable with MENU while you're on the guide."))
 
+        lay.addWidget(h2("On Demand"))
+        row = QHBoxLayout()
+        row.addWidget(QLabel("On Demand channel"))
+        self.ondemand = QSpinBox()
+        self.ondemand.setRange(0, 999)
+        self.ondemand.setSpecialValueText("none")
+        self.ondemand.setValue(int(self.s.get("ondemand_channel", 1) or 0))
+        self.ondemand.setFixedWidth(110)
+        row.addWidget(self.ondemand)
+        row.addStretch(1)
+        clear = button("Clear viewing history…")
+        clear.clicked.connect(self._clear_ondemand)
+        row.addWidget(clear)
+        lay.addLayout(row)
+        taken = next((c for c in model.load() if c.number == self.ondemand.value()), None)
+        lay.addWidget(hint(
+            "Every show and film in your library folders, to watch whenever you like, with their artwork. "
+            "In TV mode press BACK → “Switch to On Demand”, or tune to this channel (clips of what's new and "
+            "what you were watching; OK opens On Demand). 0 = no channel, still in the BACK menu."
+            + (f" Channel {taken.number} is “{taken.name}” at the moment, so it keeps that number."
+               if taken else "")))
+
         lay.addWidget(h2("Commercial breaks"))
         row = QHBoxLayout()
         row.addWidget(QLabel("Fake product ads"))
@@ -1257,6 +1279,15 @@ class SettingsDialog(QDialog):
         self._save_settings()
         self.accept()
 
+    def _clear_ondemand(self) -> None:
+        from .. import ondemand
+
+        r = QMessageBox.question(self, "Clear viewing history",
+                                 "Forget where you stopped and what you've watched in On Demand on this computer?"
+                                 "\n(“Continue watching” starts empty again.)")
+        if r == QMessageBox.Yes:
+            ondemand.clear_history()
+
     def _save_settings(self):
         self.s["library_folders"] = [self.folders.item(i).text() for i in range(self.folders.count())]
         self.s["movie_folders"] = [self.mfolders.item(i).text() for i in range(self.mfolders.count())]
@@ -1270,6 +1301,7 @@ class SettingsDialog(QDialog):
         self.s["hiss_volume"] = self.hiss.value()
         self.s["ad_volume"] = self.ad_volume.value()
         self.s["guide_channel"] = self.guide.value()
+        self.s["ondemand_channel"] = self.ondemand.value()
         self.s["guide_music"] = self.gmusic.currentData()
         self.s["guide_preview"] = self.gpreview.isChecked()
         self.s["guide_audio"] = self.gaudio.currentData()

@@ -183,13 +183,14 @@ class MpvWidget(QOpenGLWidget):
             self._takes_index = bool(m) and (int(m.group(1)), int(m.group(2))) >= (0, 38)
         return self._takes_index
 
-    def load(self, path: str, start: float | None = None, end: float | None = None, loop: bool = False):
+    def load(self, path: str, start: float | str | None = None, end: float | None = None, loop: bool = False):
         """Load a file with per-file options (never global ones, which would also
         retarget whatever is currently playing)."""
         from .. import cablebox
 
         path = cablebox.media(path)       # a cable box streams from the head-end
         opts = [
+            f"start={start}" if isinstance(start, str) else          # e.g. "35%"
             f"start={start:.3f}" if start and start > 0 else "start=none",
             f"end={end:.3f}" if end and end > 0 else "end=none",
             f"loop-file={'inf' if loop else 'no'}",

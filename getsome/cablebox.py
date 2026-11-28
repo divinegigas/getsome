@@ -237,7 +237,7 @@ def install() -> bool:
         _info = call("info", timeout=8)
     except Unreachable as e:
         _log.warning("head-end %s unreachable: %s", conf.get("host"), e)
-        _info = {"channels": [], "restricted": [], "guide_channel": 0}
+        _info = {"channels": [], "restricted": [], "guide_channel": 0, "ondemand_channel": 0}
 
     fs42.channels = lambda include_hidden=False: [
         fs42.Channel(c["number"], c["name"], c["network_type"], c["hidden"]) for c in _info.get("channels", [])
@@ -255,6 +255,20 @@ def install() -> bool:
     ads.episode_details = safe(lambda path: tuple(call("episode_details", path)), ("", ""))
     ads.movie_card = safe(lambda path: call("movie_card", path), dict)
     artwork.for_programme = safe(lambda path: call("artwork", path) if path else {}, dict)
+    from . import ondemand
+
+    def od_catalog():
+        try:
+            return call("ondemand_catalog", timeout=90)
+        except Unreachable as e:
+            msg = str(e)
+            if "unknown call" in msg:
+                msg = "Update the head-end computer to use On Demand on this cable box."
+            else:
+                msg = f"Can't reach the head-end for On Demand ({msg})."
+            return {"items": [], "note": msg}
+    ondemand.catalog = od_catalog
+    ondemand.show_detail = lambda folder: call("ondemand_show", folder, timeout=30)
     model.load = lambda: [model.Channel(r["number"], r["name"], restricted=True, lock_mode=r["lock_mode"],
                                         free_from=r["free_from"], free_to=r["free_to"])
                           for r in _info.get("restricted", [])]
@@ -272,7 +286,7 @@ def refresh() -> bool:
         new = call("info", timeout=8)
     except Unreachable:
         return False
-    keys = ("channels", "restricted", "guide_channel", "restricted_pin", "relock_minutes")
+    keys = ("channels", "restricted", "guide_channel", "ondemand_channel", "restricted_pin", "relock_minutes")
     changed = any(new.get(k) != _info.get(k) for k in keys)
     _info = new
     return changed
@@ -280,5 +294,5 @@ def refresh() -> bool:
 
 def shared_settings() -> dict:
     """The head-end's settings that decide what the box shows."""
-    keys = ("guide_channel", "restricted_pin", "relock_minutes")
+    keys = ("guide_channel", "ondemand_channel", "restricted_pin", "relock_minutes")
     return {k: _info[k] for k in keys if k in _info}

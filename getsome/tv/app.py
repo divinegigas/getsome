@@ -35,6 +35,7 @@ from .keys import KeyMap
 from .awake import KeepAwake
 from .menu import ExitMenu, MusicMenu, TrackMenu, lang_name
 from .mpv_widget import MpvWidget
+from .ondemand import OnDemand
 from .overlays import OverlayRenderer, OverlayState, load_fonts
 
 _log = logging.getLogger("getsome.tv")
@@ -45,6 +46,7 @@ MAX_DRIFT = 1.0         # seconds off the schedule before we seek to correct
 DIGIT_TIMEOUT_MS = 1600
 NO_SIGNAL_TYPES = {"guide", "web", "executable"}  # FS42 types we don't render
 GUIDE_TYPE = "getsome_guide"
+ONDEMAND_TYPE = "getsome_ondemand"    # the On Demand preview channel (tv/ondemand.py)
 CARDS_BEFORE = 180      # seconds: long gaps before a film show film cards until this much is left
 
 
@@ -95,6 +97,8 @@ class TVWindow(QMainWindow):
         self.exit_menu = ExitMenu()
         self.renderer.exit_menu = self.exit_menu
         self.exit_choice = "tv"          # what to do after the window closes (see run_tv)
+        self.vod = OnDemand(self)        # On Demand: browse and play the library
+        self.renderer.vod = self.vod
         self.awake = KeepAwake()
         self.last_input = time.monotonic()
         self.awake_timer = QTimer(self, interval=60_000, timeout=self._check_awake)
@@ -208,13 +212,16 @@ class TVWindow(QMainWindow):
                         self.renderer.guide.now_playing = assets_gen.track_name(path)
                 except Exception:
                     pass
-        if self.music_menu.open or self.menu.open or self.exit_menu.open or self.state.animating() or self.state.static_shown > 0.001:
+        if (self.music_menu.open or self.menu.open or self.exit_menu.open or self.state.animating()
+                or self.state.static_shown > 0.001 or self.vod.animating()):
             self.video.update()
 
     # ------------------------------------------------------------------ tuning
     def tune(self, index: int):
         if not self.channels:
             return
+        if self.vod.mode:
+            self.vod.leave()                # back to cable (or off the On Demand channel)
         index %= len(self.channels)
         if index != self.index:
             self.prev_index = self.index
@@ -265,6 +272,12 @@ class TVWindow(QMainWindow):
             return
         self.guide_data.stop()
         self._stop_preview()
+
+        if ch.network_type == ONDEMAND_TYPE:
+            self.seg = None
+            self.vod.start_promo()
+            self._finish_tuning(token)
+            return
 
         if ch.network_type in NO_SIGNAL_TYPES:
             self.video.stop()
@@ -631,6 +644,8 @@ class TVWindow(QMainWindow):
     # ------------------------------------------------------------------ picture / zoom
     def _zoom_key(self) -> str:
         """The show (or film) on screen, as the zoom memory knows it: the same on every channel."""
+        if self.vod.playing:
+            return self.vod.zoom_key()
         seg = self.seg
         if seg is None or seg.content_type != "feature" or seg.media_type == "image":
             return ""
@@ -715,6 +730,8 @@ class TVWindow(QMainWindow):
         vol = float(self.settings.get("volume", 100))
         if self._ad_playing():
             vol *= max(0, min(100, int(self.settings.get("ad_volume", 50)))) / 100.0
+        elif self.vod.mode == "promo":
+            vol *= 0.6                        # the On Demand channel's clips sit under the TV volume
         try:
             self.video.player.volume = vol
         except Exception as e:
@@ -731,11 +748,16 @@ class TVWindow(QMainWindow):
             pass
         self._apply_volume()
 
-    def _apply_track_prefs(self) -> None:
-        """Pick audio/subtitle tracks matching the preferred languages, once per loaded file."""
+    def _apply_track_prefs(self, ident=None) -> None:
+        """Pick audio/subtitle tracks matching the preferred languages, once per loaded file.
+        ident names the file for On Demand (there's no schedule segment then)."""
         seg = self.seg
-        key = (self.token, seg.path if seg else None, seg.starts_at if seg else None)
-        if seg is None or key == self._prefs_for:
+        if ident is None:
+            if seg is None:
+                return
+            ident = (seg.path, seg.starts_at)
+        key = (self.token, ident)
+        if key == self._prefs_for:
             return
         self._prefs_for = key
         try:
@@ -824,7 +846,7 @@ class TVWindow(QMainWindow):
             self._open_music_menu()
             return
         seg = self.seg
-        if seg is None or self.state.guide or seg.media_type == "image":
+        if not self.vod.playing and (seg is None or self.state.guide or seg.media_type == "image"):
             self.state.banner_info = {"header": "No audio or subtitle options here"}
             self.state.banner_fade.show(2.0)
             return
@@ -905,6 +927,14 @@ class TVWindow(QMainWindow):
         self.video.update()
 
     def _on_restart(self):
+        if self.vod.mode in ("play", "promo"):
+            if self.vod.playing:
+                self._apply_track_prefs(self.vod.track_key())
+            self.vod.on_restart()
+            self._apply_zoom()
+            if self.tuning:
+                self._finish_tuning(self.token)
+            return
         self._apply_track_prefs()
         self._apply_zoom()
         token = self.token
@@ -957,6 +987,10 @@ class TVWindow(QMainWindow):
             self._stalls = 0
 
     def _on_ended(self, reason: str):
+        if self.vod.mode in ("play", "promo"):
+            if not self._closing:
+                self.vod.on_ended(reason)
+            return
         if (reason == "error" and not self._closing and not self.state.guide
                 and self.state.intermission is None):
             _log.warning("playback error on channel %s", self.channels[self.index].number if self.channels else "?")
@@ -966,7 +1000,8 @@ class TVWindow(QMainWindow):
 
     def _show_banner(self):
         ch = self.channels[self.index]
-        if ch.network_type == GUIDE_TYPE or self.state.bumper is not None or self.state.intermission is not None:
+        if (ch.network_type in (GUIDE_TYPE, ONDEMAND_TYPE) or self.vod.active or self.state.bumper is not None
+                or self.state.intermission is not None):
             return
         now = dt.datetime.now()
         try:
@@ -1035,7 +1070,10 @@ class TVWindow(QMainWindow):
             g = next((i for i, c in enumerate(self.channels) if c.network_type == GUIDE_TYPE), None)
             if self.exit_menu.open or self.menu.open or self.music_menu.open or self.state.pin_entry is not None:
                 return True
-            if g is not None:
+            if g is not None and self.vod.active:
+                self.vod.leave()
+                self.tune(g)
+            elif g is not None:
                 self.tune(self.prev_index if g == self.index and self.prev_index is not None else g)
             return True
         if self.exit_menu.open:
@@ -1044,9 +1082,16 @@ class TVWindow(QMainWindow):
         if self.state.pin_entry is not None and self._pin_key(key, action):
             return True
         if action in ("back", "quit"):
+            if self.vod.active and self.menu.open:
+                self.menu.close()
+                self.video.update()
+                return True
             self.menu.close()
             self.music_menu.close()
-            self.exit_menu.show()
+            if self.vod.active and self.vod.back():
+                self.video.update()
+                return True
+            self.exit_menu.show(on_demand=self.vod.active)
             self.video.update()
             return True
         if self.menu.open:
@@ -1056,6 +1101,13 @@ class TVWindow(QMainWindow):
             self._music_menu_key(action)
             return True
         digit = KeyMap.digit_for(key) if key else None
+        if self.vod.active:
+            if action == "last_channel":
+                self._back_to_cable()
+                return True
+            if self.vod.key(action, digit):
+                self.video.update()
+                return True
         if digit is not None:
             self._digit(digit)
             return True
@@ -1072,6 +1124,8 @@ class TVWindow(QMainWindow):
             self.tune(self.prev_index)
         elif action == "enter" and self.state.locked and not self.digits:
             self._open_pin()
+        elif action == "enter" and self.vod.mode == "promo" and not self.digits:
+            self.vod.open_home(select=self.vod.promo_selected())
         elif action == "enter":
             self._commit_digits()
         elif action == "info" and self.channels:
@@ -1103,8 +1157,30 @@ class TVWindow(QMainWindow):
         g = int(self.settings.get("guide_channel") or 0)
         if g and real and all(c.number != g for c in chans):
             chans.append(fs42.Channel(g, "TV Guide", GUIDE_TYPE))
-            chans.sort(key=lambda c: c.number)
+        od = int(self.settings.get("ondemand_channel") or 0)
+        if od and all(c.number != od for c in chans):      # a real channel on that number keeps it
+            chans.append(fs42.Channel(od, "On Demand", ONDEMAND_TYPE))
+        chans.sort(key=lambda c: c.number)
         return chans, real
+
+    def _back_to_cable(self) -> None:
+        """Leave On Demand: back to the channel you were on (not the On Demand channel itself)."""
+        self.vod.leave()
+        if not self.channels:
+            self.video.stop()
+            self.state.black = True
+            self.state.message = "NO CHANNELS"
+            self.state.message_sub = "Open setup and make a channel first"
+            self.video.update()
+            return
+        idx = self.index
+        if self.channels[idx].network_type == ONDEMAND_TYPE:
+            prev = self.prev_index
+            if prev is not None and prev < len(self.channels) and self.channels[prev].network_type != ONDEMAND_TYPE:
+                idx = prev
+            else:
+                idx = next((i for i, c in enumerate(self.channels) if c.network_type == "standard"), idx)
+        self.tune(idx)
 
     def _refresh_lineup(self) -> None:
         """Cable box: the head-end's channels changed (built, renamed, deleted): take the new line-up,
@@ -1124,6 +1200,8 @@ class TVWindow(QMainWindow):
         nums = [c.number for c in self.channels]
         self.prev_index = None
         self.index = nums.index(cur) if cur in nums else 0
+        if self.vod.active:
+            return                          # browsing or playing On Demand: nothing to re-tune now
         self.state.banner_info = {"header": "CHANNEL LINE-UP UPDATED"}
         self.state.banner_fade.show(3.0)
         if cur not in nums:
@@ -1154,7 +1232,7 @@ class TVWindow(QMainWindow):
             self.away_since = None
             return
         minutes = int(self.settings.get("relock_minutes") or 0)
-        if self.channels[self.index].number in self.restricted or minutes <= 0:
+        if (not self.vod.active and self.channels[self.index].number in self.restricted) or minutes <= 0:
             self.away_since = None
             return
         now = time.monotonic()
@@ -1167,6 +1245,8 @@ class TVWindow(QMainWindow):
 
     def _check_lock_schedule(self) -> None:
         self._tick_relock()
+        if self.vod.mode:
+            return                          # On Demand hides restricted titles itself
         if not self.restricted or not self.channels or self.tuning:
             return
         if self._is_locked(self.channels[self.index]) != self.state.locked:
@@ -1293,7 +1373,11 @@ class TVWindow(QMainWindow):
         elif action == "enter":
             choice = self.exit_menu.choice()
             self.exit_menu.close()
-            if choice != "tv":
+            if choice == "ondemand":
+                self.vod.open_home()
+            elif choice == "cable":
+                self._back_to_cable()
+            elif choice != "tv":
                 self.exit_choice = choice
                 self.close()
         self.video.update()
@@ -1361,6 +1445,7 @@ class TVWindow(QMainWindow):
 
     def closeEvent(self, ev):
         self._closing = True
+        self.vod.shutdown()
         self.preview_timer.stop()
         self.awake.stop()
         self.awake_timer.stop()

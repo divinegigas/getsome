@@ -213,6 +213,7 @@ class OverlayRenderer:
         self.menu = None             # TrackMenu, set by the TV window
         self.music_menu = None       # MusicMenu (guide channel)
         self.exit_menu = None        # ExitMenu (BACK button)
+        self.vod = None              # OnDemand (tv/ondemand.py)
 
     def paint(self, p: QPainter, w: int, h: int) -> None:
         s = self.s
@@ -246,6 +247,8 @@ class OverlayRenderer:
             t = (_dt.datetime.now() - s.bumper_start).total_seconds()
             if 0 <= t <= s.bumper_dur + 0.5:
                 paint_bumper(p, w, h, s.bumper, t, s.bumper_dur)
+        if self.vod is not None and self.vod.mode is not None:
+            self.vod.paint(p, w, h)
         self.noise.draw(p, w, h, s.static_shown)
 
         unit = h / 1080.0

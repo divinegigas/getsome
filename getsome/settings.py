@@ -58,6 +58,9 @@ DEFAULTS: dict[str, Any] = {
     "relock_minutes": 120,
     # Channel number of the built-in TV guide (0 = no guide channel)
     "guide_channel": 2,
+    # Channel number of the On Demand preview channel (0 = none; On Demand is still in the BACK menu).
+    # A real channel on the same number keeps it.
+    "ondemand_channel": 1,
     # Folders that contain show folders (e.g. ".../Media/TV shows")
     "library_folders": [],
     # Folders that contain movies

@@ -1105,6 +1105,23 @@ class TVWindow(QMainWindow):
         if not self._handle(action, key):
             super().keyPressEvent(ev)
 
+    # ------------------------------------------------------------------ mouse clicks
+    def mousePressEvent(self, ev):
+        """Remotes with an "air mouse" mode send OK as a left mouse click (and some send Back as a right
+        click): treat them as the buttons, so OK works whichever mode the remote is in."""
+        action = {Qt.LeftButton: "enter", Qt.RightButton: "back", Qt.BackButton: "back",
+                  Qt.MiddleButton: "menu"}.get(ev.button())
+        if action is None:
+            return super().mousePressEvent(ev)
+        _log.debug("mouse button as %s", action)
+        if self._duplicate(action, "mouse"):
+            return
+        self._handle(action, 0)
+        self.video.update()
+
+    def mouseDoubleClickEvent(self, ev):
+        self.mousePressEvent(ev)          # two quick OK presses arrive as a double click
+
     # ------------------------------------------------------------------ game controllers
     def _poll_gamepads(self) -> None:
         try:

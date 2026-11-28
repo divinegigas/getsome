@@ -869,7 +869,11 @@ class TVWindow(QMainWindow):
             it = self.vod.p["item"]
             self.menu.od = {"id": it["id"], "title": it["title"], "episode": ""}
             self.menu.od_fav = ondemand.is_favourite(it["id"])
-            return ("favourite",)
+            if not self.channels:
+                return ("favourite",)
+            ch = self.channels[self._cable_index()]
+            self.menu.cable_label = f"Return to channel {ch.number}  {ch.name}"
+            return ("cable", "favourite")
         seg = self.seg
         if seg is None or seg.content_type != "feature" or self.state.locked or self.state.guide:
             return ()
@@ -889,6 +893,10 @@ class TVWindow(QMainWindow):
     def _menu_action(self, row: str) -> None:
         from .. import ondemand
 
+        if row == "cable":
+            self.menu.close()
+            self._back_to_cable()
+            return
         od = self.menu.od
         if not od:
             self.state.banner_info = {"header": "Still looking…" if od is None else "Not in the On Demand library"}
@@ -968,7 +976,7 @@ class TVWindow(QMainWindow):
             row = self.menu.ROWS[self.menu.row]
             if row == "close":
                 self.menu.close()
-            elif row in ("ondemand", "favourite"):
+            elif row in ("ondemand", "favourite", "cable"):
                 self._menu_action(row)
             else:
                 self._menu_change(1)
@@ -1228,14 +1236,19 @@ class TVWindow(QMainWindow):
             self.state.message_sub = "Open setup and make a channel first"
             self.video.update()
             return
+        self.tune(self._cable_index())
+
+    def _cable_index(self) -> int:
+        """The channel to go back to from On Demand: the one you switched from (never the On Demand
+        channel itself; then the one before it, or the first real channel)."""
         idx = self.index
-        if self.channels[idx].network_type == ONDEMAND_TYPE:
+        if self.channels and self.channels[idx].network_type == ONDEMAND_TYPE:
             prev = self.prev_index
             if prev is not None and prev < len(self.channels) and self.channels[prev].network_type != ONDEMAND_TYPE:
                 idx = prev
             else:
                 idx = next((i for i, c in enumerate(self.channels) if c.network_type == "standard"), idx)
-        self.tune(idx)
+        return idx
 
     def _refresh_lineup(self) -> None:
         """Cable box: the head-end's channels changed (built, renamed, deleted): take the new line-up,

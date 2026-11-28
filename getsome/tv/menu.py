@@ -64,6 +64,7 @@ class TrackMenu:
         self.open = False
         self.od: dict | None = None      # On Demand title for the extra rows ({} = not in the library)
         self.od_fav = False
+        self.cable_label = ""            # "Return to channel 5  Toon Zone" (while watching On Demand)
         self.row = 0
         self.audio: list[dict] = []
         self.subs: list[dict] = []
@@ -164,7 +165,9 @@ class TrackMenu:
         od = self.od
         title = (od or {}).get("title", "")
         for extra in self.ROWS[len(self.BASE):-1]:
-            if od is None:
+            if extra == "cable":
+                rows.append(("CABLE", ("action", self.cable_label or "Return to cable"), True))
+            elif od is None:
                 rows.append(("ON DEMAND" if extra == "ondemand" else "FAVOURITE", ("action", "Looking…"), False))
             elif not od:
                 rows.append(("ON DEMAND" if extra == "ondemand" else "FAVOURITE",

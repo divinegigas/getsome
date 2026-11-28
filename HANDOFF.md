@@ -638,6 +638,9 @@ part-watched things, OK opens the browser; the BACK menu switches between cable 
   that exist and queues the rest (one background worker, the show being looked at first) and returns
   `thumbs_pending`; the show page asks again every 4 s while any are pending. Show covers stay as they were
   (the owner likes them). Made on the head-end for cable boxes.
+- **MENU while watching On Demand (28 Nov, owner request)**: a "CABLE  Return to channel N  Name" row
+  (`TVWindow._cable_index()`: the channel you switched from; from the On Demand channel itself, the one before
+  it or the first real channel) above the favourite row; saves the position, then `_back_to_cable()`.
 - Ideas next: A–Z jump (number keys could jump letters, but digits currently mean "go to channel"),
   trailers or a live preview behind the home backdrop, "On Demand" row in the guide, Android support.
 

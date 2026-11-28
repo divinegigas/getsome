@@ -625,7 +625,15 @@ part-watched things, OK opens the browser; the BACK menu switches between cable 
     `drawtext` (textfile=, expansion=none) in a background thread on whichever computer builds the catalog
     (the head-end for boxes). `catalog()` fills them in on every call (`_with_art`) and reports
     `art_pending`; TV mode re-asks every 20 s while some are pending. `ART_VERSION` remakes them.
-- Ideas next: search / A–Z jump (number keys could jump letters, but digits currently mean "go to channel"),
+- **Search (28 Nov, owner request: "up twice from the top row")**: on the home screen's top row the first Up
+  arms it (pill "▲ AGAIN TO SEARCH", 4 s; a "▲▲ SEARCH" pill shows while on the top row), the second opens
+  mode `search`: an on-screen keyboard (A–Z, 0–9, SPACE / DELETE / CLEAR; Right from its edge goes to the
+  results) and a poster grid of results as you type. Real keyboards (the remote's back, a PC) type straight in
+  through `TVWindow.keyPressEvent` → `OnDemand.type_text` before the key map (so L, I, M, Q… are letters
+  there); Backspace deletes while there's text, then means BACK. Matching (`_run_search`): accents and
+  punctuation ignored, every word must be in the title or genres/year; title-starts > a word starts >
+  title contains > genre/year. OK opens the title; BACK from its page returns to the search (`det["back"]`).
+- Ideas next: A–Z jump (number keys could jump letters, but digits currently mean "go to channel"),
   trailers or a live preview behind the home backdrop, "On Demand" row in the guide, Android support.
 
 ## Android cable box (26 Nov, first version, untested on a device)

@@ -1082,6 +1082,10 @@ class TVWindow(QMainWindow):
     # ------------------------------------------------------------------ input
     def keyPressEvent(self, ev):
         key = ev.key()
+        if not self.exit_menu.open and self.vod.type_text(key, ev.text()):
+            self._input_seen()
+            self.video.update()
+            return
         action = self.keys.action_for(key)
         if action is None and KeyMap.digit_for(key) is None:
             # helps set up IR remotes: the log names every button we don't use

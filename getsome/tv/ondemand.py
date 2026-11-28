@@ -5,8 +5,9 @@ Modes (OnDemand.mode)
   "promo"   the On Demand channel (settings.ondemand_channel, default 1): clips of things you were
             watching and things recently added, with their art; OK opens On Demand
   "home"    rows of posters: Continue watching, Favourites, Recently added, TV shows, Movies, then
-            genres. Very quiet guide music plays underneath. Resting on a title for 8 s plays a preview
+            genres. Up twice on the top row opens "search". Very quiet guide music plays underneath. Resting on a title for 8 s plays a preview
             in the backdrop; 8 s more and it grows to full screen and simply carries on playing
+  "search"  an on-screen keyboard (a keyboard on the remote types straight in) and results as you type
   "details" one show (play/resume, seasons, episodes) or one film (play/resume/start over)
   "play"    full-screen playback with an on-screen bar: OK pause, Left/Right skip (hold to go faster),
             MENU audio/subtitles/picture, BACK stop; the next episode follows by itself
@@ -273,6 +274,8 @@ class OnDemand:
         self.pv: dict | None = None       # the preview playing in the home screen's backdrop
         self.bgm = False                  # the quiet browsing music is playing
         self._pv_failed: set = set()
+        self.search = {"q": "", "focus": "keys", "k": 0, "r": 0, "results": [], "y": _Ease()}
+        self._up_armed = 0.0                # first Up on the top row: a second one opens search
         self._art_pending = 0
         self._cat_at = 0.0
         self._last_paint = time.monotonic()
@@ -285,7 +288,7 @@ class OnDemand:
     @property
     def active(self) -> bool:
         """Browsing or playing: On Demand has the remote."""
-        return self.mode in ("home", "details", "play")
+        return self.mode in ("home", "search", "details", "play")
 
     @property
     def playing(self) -> bool:
@@ -429,7 +432,7 @@ class OnDemand:
         """Share of the TV volume for what On Demand is playing right now."""
         if self.mode == "promo":
             return 0.6
-        if self.mode in ("home", "details"):
+        if self.mode in ("home", "search", "details"):
             return PREVIEW_LEVEL if self.pv else BGM_LEVEL
         return 1.0
 
@@ -447,7 +450,7 @@ class OnDemand:
 
     def _bgm_start(self) -> None:
         """Very quiet guide music while browsing (the guide's own tracks, as chosen in Settings)."""
-        if self.mode not in ("home", "details") or self.pv:
+        if self.mode not in ("home", "search", "details") or self.pv:
             return
         from .. import assets_gen
 
@@ -865,7 +868,7 @@ class OnDemand:
                 self._save_progress()
             if eof or (dur and pos is not None and pos >= dur - 0.4 and not p["paused"]):
                 self._finished()
-        elif self.mode in ("home", "details"):
+        elif self.mode in ("home", "search", "details"):
             now = time.monotonic()
             if self.pv and self.pv["t_loaded"] and now - self.pv["t_loaded"] >= PREVIEW_S:
                 self._promote()
@@ -915,11 +918,11 @@ class OnDemand:
         self.win.video.seek_abs(target)
 
     # -------------------------------------------------------------- details
-    def open_details(self, item: dict, episode: str = "") -> None:
+    def open_details(self, item: dict, episode: str = "", back: str = "home") -> None:
         self._pv_stop(music=False)
         self.mode = "details"
         self.det = {"item": item, "detail": None, "eps": [], "focus": "buttons", "btn": 0, "season": 0,
-                    "ep": 0, "ep_x": _Ease(), "loading": item["kind"] == "show", "want": episode}
+                    "ep": 0, "ep_x": _Ease(), "loading": item["kind"] == "show", "want": episode, "back": back}
         if not self.bgm:
             self._bgm_start()
         if item["kind"] == "show":
@@ -1062,9 +1065,17 @@ class OnDemand:
             if self.det and self.det["focus"] == "seasons":
                 self.det["focus"] = "buttons"
                 return True
-            self.mode = "home"
+            self.mode = (self.det or {}).get("back", "home")
             self.det = None
             self._build_rows()
+            if self.mode == "search":
+                self._run_search()
+            return True
+        if self.mode == "search":
+            if self.search["focus"] == "results":
+                self.search["focus"] = "keys"
+            else:
+                self.mode = "home"
             return True
         return False
 
@@ -1073,6 +1084,9 @@ class OnDemand:
         fullscreen, MENU while playing, channel numbers)."""
         self._last_input = time.monotonic()
         self._dirty = True
+        if self.mode == "search" and digit is not None:
+            self._type(digit)
+            return True
         if digit is not None or action is None:
             return False                     # typing a channel number goes back to cable
         if self.win.state.pin_entry is not None:
@@ -1083,6 +1097,8 @@ class OnDemand:
             return self._details_key(action)
         if action in ("volume_up", "volume_down", "mute", "fullscreen"):
             return False
+        if self.mode == "search":
+            return self._search_key(action)
         if self.pv:
             if action == "enter" and self.pv["path"]:
                 self._promote()                  # OK during the preview: watch it now
@@ -1125,6 +1141,16 @@ class OnDemand:
             return action in ("channel_up", "channel_down", "left", "right", "enter", "menu", "info")
         r = self.rows[self.row]
         t = r["title"]
+        if action == "channel_up" and self.row == 0:
+            now = time.monotonic()
+            if now - self._up_armed < 4.0:
+                self._up_armed = 0.0
+                self.open_search()
+            else:
+                self._up_armed = now           # "▲ again to search"
+            return True
+        if action != "channel_up":
+            self._up_armed = 0.0
         if action == "channel_up":
             self.row = max(0, self.row - 1)
         elif action == "channel_down":
@@ -1190,6 +1216,241 @@ class OnDemand:
             return False
         return True
 
+    # -------------------------------------------------------------- search
+    KEYS = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890") + ["SPACE", "DELETE", "CLEAR"]
+    KEY_COLS = 6
+
+    def open_search(self) -> None:
+        self._pv_stop()
+        self.mode = "search"
+        self.search["focus"] = "keys" if not self.search["results"] else self.search["focus"]
+        self._run_search()
+
+    @staticmethod
+    def _norm(text: str) -> str:
+        import unicodedata
+
+        t = unicodedata.normalize("NFKD", text or "")
+        t = "".join(c for c in t if not unicodedata.combining(c)).lower()
+        return " ".join(re.sub(r"[^a-z0-9]+", " ", t).split())
+
+    def _run_search(self) -> None:
+        """Titles first (starting with what you typed, then a word starting with it, then anywhere),
+        then genres and years. Every word typed must match somewhere."""
+        sr = self.search
+        q = self._norm(sr["q"])
+        words = q.split()
+        out = []
+        if words:
+            for it in self.items or []:
+                if not self._visible(it):
+                    continue
+                t = self._norm(it["title"])
+                extra = self._norm(" ".join(it.get("genres") or []) + " " + str(it.get("year") or ""))
+                if not all(wd in t or wd in extra for wd in words):
+                    continue
+                tw = t.split()
+                if t.startswith(q):
+                    score = 0
+                elif any(x.startswith(words[0]) for x in tw):
+                    score = 1
+                elif all(wd in t for wd in words):
+                    score = 2
+                else:
+                    score = 3
+                out.append((score, _sort_key(it["title"]), it))
+        out.sort(key=lambda x: (x[0], x[1]))
+        sr["results"] = [x[2] for x in out[:120]]
+        sr["r"] = min(sr["r"], max(0, len(sr["results"]) - 1))
+        if not sr["results"]:
+            sr["focus"] = "keys"
+        self._dirty = True
+
+    def _type(self, ch: str) -> None:
+        sr = self.search
+        if ch == "DELETE":
+            sr["q"] = sr["q"][:-1]
+        elif ch == "CLEAR":
+            sr["q"] = ""
+        elif ch == "SPACE":
+            if sr["q"] and not sr["q"].endswith(" "):
+                sr["q"] += " "
+        elif len(sr["q"]) < 40:
+            sr["q"] += ch.lower() if len(ch) == 1 else ch
+        sr["r"] = 0
+        self._run_search()
+
+    def type_text(self, key: int, text: str) -> bool:
+        """A real keyboard (the remote's back, or a PC keyboard) while searching: letters type directly.
+        True = used. Backspace deletes while there's text (with nothing left it means BACK)."""
+        if self.mode != "search" or self.win.state.pin_entry is not None:
+            return False
+        if key == Qt.Key_Backspace and self.search["q"]:
+            self._type("DELETE")
+            self._last_input = time.monotonic()
+            return True
+        if len(text) == 1 and (text.isalnum() or text in " '&-.!?:,"):
+            self._type("SPACE" if text == " " else text)
+            self._last_input = time.monotonic()
+            return True
+        return False
+
+    def _search_key(self, action: str) -> bool:
+        sr = self.search
+        cols = self.KEY_COLS
+        n = len(self.KEYS)
+        letters = 36                       # A-Z and 0-9; then the three wide keys on their own row
+        if sr["focus"] == "keys":
+            k = sr["k"]
+            if action in ("left", "right"):
+                d = 1 if action == "right" else -1
+                if k >= letters:           # SPACE / DELETE / CLEAR
+                    nk = k + d
+                    if letters <= nk < n:
+                        sr["k"] = nk
+                    elif d > 0 and sr["results"]:
+                        sr["focus"] = "results"
+                else:
+                    c = k % cols + d
+                    if 0 <= c < cols:
+                        sr["k"] = k + d
+                    elif d > 0 and sr["results"]:
+                        sr["focus"] = "results"
+            elif action == "channel_down":
+                if k < letters - cols:
+                    sr["k"] = k + cols
+                elif k < letters:
+                    sr["k"] = letters + min(2, (k % cols) // 2)
+            elif action == "channel_up":
+                if k >= letters:
+                    sr["k"] = letters - cols + min(cols - 1, (k - letters) * 2)
+                elif k >= cols:
+                    sr["k"] = k - cols
+            elif action == "enter":
+                self._type(self.KEYS[k])
+            elif action == "info" or action == "menu":
+                pass
+            else:
+                return False
+            return True
+        # results grid
+        r, total = sr["r"], len(sr["results"])
+        rc = sr.get("cols", 5)
+        if action == "left":
+            if r % rc == 0:
+                sr["focus"] = "keys"
+            else:
+                sr["r"] = r - 1
+        elif action == "right":
+            sr["r"] = min(total - 1, r + 1)
+        elif action == "channel_down":
+            if r + rc < total:
+                sr["r"] = r + rc
+            elif r // rc < (total - 1) // rc:
+                sr["r"] = total - 1           # a shorter last row: its last title
+        elif action == "channel_up":
+            if r >= rc:
+                sr["r"] = r - rc
+        elif action in ("enter", "info"):
+            if total:
+                self.open_details(sr["results"][r], back="search")
+        else:
+            return False
+        return True
+
+    def _paint_search(self, p: QPainter, w: int, h: int, dt: float) -> None:
+        unit = h / 1080
+        sr = self.search
+        p.fillRect(QRectF(0, 0, w, h), BG)
+        _gradient(p, QRectF(0, 0, w, h * 0.35), False, ((0, QColor(40, 8, 80, 160)), (1, QColor(7, 0, 22, 0))))
+        self._header(p, w, h, unit)
+        # the search field
+        field = QRectF(80 * unit, 130 * unit, w - 160 * unit, 78 * unit)
+        path = QPainterPath()
+        path.addRoundedRect(field, 39 * unit, 39 * unit)
+        p.fillPath(path, QColor(20, 4, 46, 230))
+        p.setPen(QPen(QColor(PINK) if sr["focus"] == "keys" else QColor(0, 240, 255, 150), 3 * unit))
+        p.drawPath(path)
+        # magnifying glass
+        cx, cy = field.left() + 46 * unit, field.center().y()
+        p.setPen(QPen(QColor(CYAN), 4 * unit))
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(QPointF(cx - 4 * unit, cy - 4 * unit), 13 * unit, 13 * unit)
+        p.drawLine(QPointF(cx + 5 * unit, cy + 5 * unit), QPointF(cx + 15 * unit, cy + 15 * unit))
+        q = sr["q"]
+        px = int(40 * unit)
+        if q:
+            tw = _txt(p, q.upper(), px, field.left() + 86 * unit, cy + px * 0.36, QColor("#ffffff"),
+                      max_w=field.width() - 300 * unit)
+        else:
+            tw = 0
+            _txt(p, "Search titles, genres or years", px, field.left() + 86 * unit, cy + px * 0.36, DIM)
+        if int(time.monotonic() * 2) % 2 == 0:       # cursor
+            p.fillRect(QRectF(field.left() + 92 * unit + tw, cy - 22 * unit, 4 * unit, 44 * unit), QColor(PINK))
+        count = f"{len(sr['results'])} found" if q else ""
+        if count:
+            p.setFont(font("text", int(28 * unit)))
+            cw = QFontMetricsF(p.font()).horizontalAdvance(count)
+            _txt(p, count, int(28 * unit), field.right() - 40 * unit - cw, cy + 10 * unit, CYAN)
+        # on-screen keyboard
+        kx, ky = 80 * unit, 250 * unit
+        ks, gap = 66 * unit, 10 * unit
+        cols = self.KEY_COLS
+        for i, label in enumerate(self.KEYS):
+            if i < 36:
+                r = QRectF(kx + (i % cols) * (ks + gap), ky + (i // cols) * (ks + gap), ks, ks)
+            else:
+                j = i - 36
+                wide = (cols * (ks + gap) - gap - 2 * gap) / 3
+                r = QRectF(kx + j * (wide + gap), ky + 6 * (ks + gap) + 6 * unit, wide, ks * 0.8)
+            sel = sr["focus"] == "keys" and sr["k"] == i
+            path = QPainterPath()
+            path.addRoundedRect(r, 10 * unit, 10 * unit)
+            p.fillPath(path, QColor(PINK) if sel else QColor(26, 8, 58, 220))
+            p.setPen(QPen(QColor(255, 255, 255, 200) if sel else QColor(0, 240, 255, 90), (2.5 if sel else 1.2) * unit))
+            p.drawPath(path)
+            p.setFont(font("text", int((34 if i < 36 else 22) * unit)))
+            p.setPen(QColor("#ffffff") if sel else QColor(220, 215, 255))
+            p.drawText(r, Qt.AlignCenter, {"DELETE": "⌫ DELETE"}.get(label, label))
+        kb_right = kx + cols * (ks + gap)
+        # results
+        rx = kb_right + 50 * unit
+        tw_, th_ = 150 * unit, 225 * unit
+        pitch_x, pitch_y = tw_ + 26 * unit, th_ + 64 * unit
+        rc = max(1, int((w - 60 * unit - rx + 26 * unit) / pitch_x))
+        sr["cols"] = rc
+        res = sr["results"]
+        if not q:
+            _txt(p, "Type with the keyboard here, or the keyboard on your remote.", int(30 * unit), rx,
+                 ky + 40 * unit, DIM, max_w=w - rx - 60 * unit)
+        elif not res:
+            _txt(p, "Nothing matches that yet.", int(32 * unit), rx, ky + 40 * unit, YELLOW)
+        sel_row = sr["r"] // rc if res else 0
+        visible_rows = max(1, int((h - ky - 120 * unit) / pitch_y))
+        top = max(0, sel_row - visible_rows + 1) if sr["focus"] == "results" else 0
+        sr["y"].target = top
+        if sr["y"].step(dt):
+            self._dirty = True
+        p.save()
+        p.setClipRect(QRectF(rx - 20 * unit, ky - 20 * unit, w, h - ky - 70 * unit))
+        for i, it in enumerate(res):
+            row, col = divmod(i, rc)
+            y = ky + (row - sr["y"].v) * pitch_y
+            if y > h or y + pitch_y < ky - 40 * unit:
+                continue
+            r = QRectF(rx + col * pitch_x, y, tw_, th_)
+            sel = sr["focus"] == "results" and i == sr["r"]
+            self._tile(p, r, {"item": it}, "poster", sel, unit)
+            _txt(p, it["title"], int(22 * unit), r.left(), r.bottom() + (34 if sel else 26) * unit,
+                 QColor("#ffffff") if sel else DIM, max_w=tw_ + 10 * unit)
+        p.restore()
+        if res and sr["focus"] == "results":
+            it = res[sr["r"]]
+            _txt(p, f"{it['title']}   ·   {ondemand.meta_line(it)}", int(28 * unit), rx, h - 74 * unit, CYAN,
+                 max_w=w - rx - 60 * unit)
+        self._hints(p, w, h, unit, "▲▼◀▶ choose    OK type / open    ▶ from the keyboard to the results    "
+                                   "BACK " + ("keyboard" if sr["focus"] == "results" else "close search"))
+
     # -------------------------------------------------------------- painting
     def paint(self, p: QPainter, w: int, h: int) -> None:
         now = time.monotonic()
@@ -1198,6 +1459,8 @@ class OnDemand:
             self._paint_promo(p, w, h)
         elif self.mode == "home":
             self._paint_home(p, w, h, dt)
+        elif self.mode == "search":
+            self._paint_search(p, w, h, dt)
         elif self.mode == "details":
             self._paint_details(p, w, h, dt)
         elif self.mode == "play":
@@ -1461,6 +1724,21 @@ class OnDemand:
         p.restore()
         if moving:
             self._dirty = True
+        if self.row == 0 or time.monotonic() - self._up_armed < 4.0:
+            armed = time.monotonic() - self._up_armed < 4.0
+            label = "▲ AGAIN TO SEARCH" if armed else "▲▲  SEARCH"
+            p.setFont(font("text", int(26 * unit)))
+            lw = QFontMetricsF(p.font()).horizontalAdvance(label) + 40 * unit
+            box = QRectF(w - lw - 220 * unit, 40 * unit, lw, 46 * unit)
+            path = QPainterPath()
+            path.addRoundedRect(box, 23 * unit, 23 * unit)
+            p.fillPath(path, QColor(PINK) if armed else QColor(20, 4, 46, 200))
+            p.setPen(QPen(QColor(0, 240, 255, 160), 1.5 * unit))
+            p.drawPath(path)
+            p.setPen(QColor("#ffffff"))
+            p.drawText(box, Qt.AlignCenter, label)
+            if armed:
+                self._dirty = True
         hint = "▲▼◀▶ browse    OK "
         if e and e.get("cont"):
             hint += "resume    INFO details    MENU remove from row"

@@ -56,7 +56,7 @@ sudo dnf install mpv-libs ffmpeg-free python3     # Fedora
   hard-code `getsome.sh`: use `paths.launcher_path()` / `launch_cmd()` / `launch_hint()`.
 - **Android cable box** (`android/`, see HANDOFF): built only on GitHub (`.github/workflows/android.yml`; the
   sandbox can't reach Google's Maven). It speaks the head-end protocol, so changing `headend.py`'s calls
-  or JSON shapes means updating `HeadEnd.kt` / `TvActivity.kt` too.
+  or JSON shapes means updating `HeadEnd.kt` / `TvActivity.kt` too (On Demand's calls aren't used there yet).
 - **User data:** `~/.local/share/getsome/` (`channels.json`, `library.json`, `movies.json`, `fs42/` work dir with `confs/`, `runtime/`, `catalog/`, `overrides/`, `logs/`).
 - **Settings and keymap:** `~/.config/getsome/settings.json` and `keymap.json`.
 - **For isolated testing:** `GETSOME_DATA_DIR=… XDG_CONFIG_HOME=…`. Headless: `Xvfb :99` + `DISPLAY=:99` (in the sandbox, llvmpipe sometimes renders mpv black, and Xvfb sometimes dies between long jobs; restart it).
@@ -74,6 +74,7 @@ getsome/upkeep.py        keep schedules ahead of the clock (extend / rebuild exp
 getsome/cleanup.py       find/fix leftover, broken, empty, duplicate-number channels
 getsome/autopop.py       auto-create channels: group shows/films by genre, rating, decade; names, styles (GUI: gui/autopop_dialog.py)
 getsome/artwork.py       finds poster/fanart/logo/episode-thumb art next to shows and films
+getsome/ondemand.py      On Demand data: catalog of the library (+NFO, art, restrictions), show episodes, viewing history
 getsome/steam.py         running under Steam (Big Picture): env fixes, X11 window, launch log
 getsome/steam_shortcut.py  "Add to Steam" (shortcuts.vdf, binary VDF) + startup artwork safety net; art in steam_art.py
 getsome/headend.py       share channels on the home network (HTTP 4242 + UDP 4243 discovery, pairing, Range files)
@@ -88,7 +89,7 @@ getsome/beds.py          short original beds: jrpg, metal, rock, punk, reggae, s
 getsome/gui/             setup window (theme, main_window, channel_editor, schedule_editor, dialogs, workers)
 android/                 Android cable-box app (Kotlin; flavors neon/xcable; libmpv): TvActivity, Overlay, Player, HeadEnd, PairActivity
 packaging/               build_appimage.sh, AppRun, excludelist (AppImage build); .github/workflows/appimage.yml publishes
-getsome/tv/              TV mode (app, mpv_widget, overlays, bumpers, intermissions, ads_paint, art_paint, guide, menu, awake, hiss, keys, gamepad)
+getsome/tv/              TV mode (app, mpv_widget, overlays, bumpers, intermissions, ads_paint, art_paint, guide, menu, ondemand, awake, hiss, keys, gamepad)
 ```
 
 ## Owner's setup

@@ -27,6 +27,7 @@ TV mode. See `CLAUDE.md` for the brief and the ground rules, and
 | 5 Guide, overrides, settings, key-remap screen | ✅ guide, overrides and settings · ❌ remap screen (JSON file only) |
 | 6 Stretch: commercials at real break points | ✅ v2: cards (promos, trivia, lineups, on this day), five-beat product ads, six music styles · owner liked promo cards, found v1 product ads weak; **v2 not yet reported on** |
 | Session 3 | ✅ Steam Big Picture fix (confirmed), restricted channels with PIN + lock schedule, artwork cards + transitions |
+| On Demand (28 Nov) | 🔨 built: browse + play the whole library, channel 1 preview, BACK menu switch, cable box; see "On Demand" · **waiting on the owner's test** |
 | Added along the way | ✅ movie channels, films in TV channels, up-next bumpers, 5 intermission looks, audio/subtitle menu, 20 guide tracks (RPG + metal/rock/punk/reggae/ska), guide preview window + sound toggle, exit menu, keep-awake, every-episode rotation, clean-up tool, new-episode check, usage dots in pickers, one-click updater, app menu + desktop shortcut, rename to Neon Cable 42 |
 
 ## What's built (and working)
@@ -560,6 +561,50 @@ the new-episode check, every-episode rotation, schedule upkeep, update button, e
   as a Bigscreen app with a proper tile, remote/gamepad navigation in the setup window, maybe launching
   straight into TV mode.
 - Steam Big Picture / Steam Deck-style living-room polish, building on item 3.
+
+## On Demand (28 Nov, owner request; untested by the owner)
+A Netflix-style way to watch anything in the library folders, on the main PC and on a desktop cable box
+(not Android yet). Owner's choices: channel 1 is an On Demand "home" channel previewing recent and
+part-watched things, OK opens the browser; the BACK menu switches between cable and On Demand.
+- **Data** (`getsome/ondemand.py`, no Qt): `catalog()` = every show/film from the setup window's scan caches
+  (`library.cached()`, `cached_movies()`) + `tvshow.nfo`/movie NFO plot/year/tagline, `artwork.show_art/
+  movie_art`, "added" time (newest mtime/ctime of the show folder + season folders, or the film file), and
+  `lock` = restricted channels the title is on (`model.load()`, real paths). Cached in
+  `ondemand_catalog.json`, keyed on the mtimes of library.json / movies.json / channels.json
+  (`CATALOG_VERSION`). Never scans by itself: an unscanned library gives a `note` ("press Rescan in Add shows").
+  `show_detail(folder)` = `media_index.scan_show` + each episode NFO's title/plot/aired/runtime + `-thumb` still.
+  `History` (`ondemand_history.json`, per computer; a box keeps its own): position per file (resume from
+  45 s on), done at 93 % or with 150 s left, per title last file + next episode; "Continue watching".
+  Settings → On Demand → "Clear viewing history…".
+- **Screens** (`getsome/tv/ondemand.py`, `OnDemand`, owned by `TVWindow.vod`, painted by `OverlayRenderer`
+  before the static): modes `promo` (the channel), `home` (backdrop + rows: Continue watching (16:9 tiles,
+  OK resumes directly, MENU removes), Recently added, TV shows, Movies, top genres with ≥4 titles, and a
+  "Restricted" PIN tile when some are hidden), `details` (buttons Play/Resume/From the first episode or
+  Resume/Start over/Mark watched; season tabs; episode strip; MENU toggles watched), `play` (OSD with bar;
+  OK pause; Left/Right skip 10 s, then 30 s, then 60 s while pressed repeatedly, one seek 650 ms after the
+  last press; MENU = the normal audio/subtitle/picture menu, zoom remembered under the same key as on the
+  channels; "next episode" card for the last 25 s, then autoplay; BACK hides the card, then stops).
+  Pictures load in 3 background threads (`Images`; on a box via `cablebox.fetch`), scaled once into
+  `data/ondemand_thumbs/` (pruned to 4000 files), 200 MB in memory.
+- **Window glue** (`tv/app.py`): `ONDEMAND_TYPE` channel added by `_channel_list` on
+  `settings.ondemand_channel` (default 1, 0 = none) only if no real channel has that number (the owner's
+  channel keeps it; Settings says so). `tune()` leaves On Demand; `_back_to_cable()` returns to the channel
+  you were on (or the first real one). While browsing, the main mpv is stopped (one decoder rule); the promo
+  channel plays clips (`start="NN%"`, mpv percent start) at 60 % volume with a static burst between them.
+  Digits, GUIDE and L (last channel) leave On Demand. Lock schedule checks pause while in On Demand; time
+  there counts as "away" for the silent relock. `ExitMenu.show(on_demand)` swaps BACK TO TV / SWITCH TO ON
+  DEMAND for BACK TO ON DEMAND / SWITCH TO CABLE.
+- **Cable box**: head-end calls `ondemand_catalog` / `ondemand_show` (outside the FS42 lock; the service warms
+  the catalog at start), `info` carries `ondemand_channel`. Files stream through the existing `/f/` route
+  (library folders were already allowed). An older head-end answers "unknown call" → the box says to update
+  the PC. Android (`HeadEnd.kt`) doesn't use these calls yet.
+- Tested in the sandbox (demo library + two fake films, 1280x720): every screen, resume/continue, next-episode
+  card + autoplay, restricted title hidden → PIN tile → shown, BACK menu both ways, Settings, a second install
+  as cable box through `getsome serve` (catalog, restriction, posters, streaming, positions), XCable colours.
+  **Not tested**: a real library's size (catalog build time on the external drive; first run reads every
+  tvshow.nfo/movie NFO), real remotes, Bazzite over Wi-Fi.
+- Ideas next: search / A–Z jump (number keys could jump letters, but digits currently mean "go to channel"),
+  trailers or a live preview behind the home backdrop, "On Demand" row in the guide, Android support.
 
 ## Android cable box (26 Nov, first version, untested on a device)
 `android/`: a Kotlin app (no AndroidX, plain Views + one Canvas overlay) that is a **cable box** for the

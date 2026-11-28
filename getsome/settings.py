@@ -61,6 +61,13 @@ DEFAULTS: dict[str, Any] = {
     # Channel number of the On Demand preview channel (0 = none; On Demand is still in the BACK menu).
     # A real channel on the same number keeps it.
     "ondemand_channel": 1,
+    # On Demand: seconds resting on a title before its preview starts (0 = no previews), seconds of preview
+    # before it carries on as the real thing (0 = only when OK is pressed), and two volumes as a percent of
+    # the TV volume: the quiet browsing music (0 = none) and previews
+    "ondemand_preview_after": 3,
+    "ondemand_preview_for": 15,
+    "ondemand_music_volume": 14,
+    "ondemand_preview_volume": 70,
     # Folders that contain show folders (e.g. ".../Media/TV shows")
     "library_folders": [],
     # Folders that contain movies

@@ -48,8 +48,9 @@ PROMO_SECONDS = 16          # each clip on the On Demand channel
 NEXT_CARD_S = 25            # "next episode" card for the last this-many seconds of an episode
 SAVE_EVERY = 10             # seconds between position saves while playing
 OSD_S = 4.0
-HOVER_S = 8.0               # resting on a title this long starts its preview in the backdrop...
-PREVIEW_S = 8.0             # ...and after this long the preview becomes the real thing
+# timings and volumes come from Settings → On Demand (settings.ondemand_*); these are the fallbacks
+HOVER_S = 3.0               # resting on a title this long starts its preview in the backdrop...
+PREVIEW_S = 15.0            # ...and after this long the preview becomes the real thing
 GROW_S = 0.6                # the preview growing to full screen
 BGM_LEVEL = 0.14            # browsing music, as a share of the TV volume
 PREVIEW_LEVEL = 0.7
@@ -433,8 +434,16 @@ class OnDemand:
         if self.mode == "promo":
             return 0.6
         if self.mode in ("home", "search", "details"):
-            return PREVIEW_LEVEL if self.pv else BGM_LEVEL
+            return self._pref("preview_volume", PREVIEW_LEVEL * 100) / 100 if self.pv \
+                else self._pref("music_volume", BGM_LEVEL * 100) / 100
         return 1.0
+
+    def _pref(self, name: str, default: float) -> float:
+        """A number from Settings → On Demand (settings.ondemand_<name>)."""
+        try:
+            return float(self.win.settings.get("ondemand_" + name, default))
+        except (TypeError, ValueError):
+            return float(default)
 
     def _margins(self, left: float = 0.0, top: float = 0.0, right: float = 0.0, bottom: float = 0.0) -> None:
         """Where mpv draws the picture, as shares of the screen (the preview sits in the backdrop)."""
@@ -455,7 +464,7 @@ class OnDemand:
         from .. import assets_gen
 
         self._margins()
-        playlist = [str(x) for x in assets_gen.guide_playlist()]
+        playlist = [str(x) for x in assets_gen.guide_playlist()] if self._pref("music_volume", 14) > 0 else []
         if not playlist:
             self.win.video.stop()
             self.bgm = False
@@ -482,10 +491,11 @@ class OnDemand:
         return eps[0], self.history.resume_at(eps[0]["path"]), "Play"
 
     def _hover_tick(self) -> None:
-        """Resting on a title: after HOVER_S its preview starts in the backdrop."""
+        """Resting on a title: after a few seconds (Settings) its preview starts in the backdrop."""
         w = self.win
-        if (self.mode != "home" or self.pv or w.exit_menu.open or w.menu.open or w.state.pin_entry is not None
-                or time.monotonic() - self._last_input < HOVER_S):
+        after = self._pref("preview_after", HOVER_S)
+        if (after <= 0 or self.mode != "home" or self.pv or w.exit_menu.open or w.menu.open
+                or w.state.pin_entry is not None or time.monotonic() - self._last_input < after):
             return
         e = self._entry()
         if not e or not e.get("item"):
@@ -870,7 +880,8 @@ class OnDemand:
                 self._finished()
         elif self.mode in ("home", "search", "details"):
             now = time.monotonic()
-            if self.pv and self.pv["t_loaded"] and now - self.pv["t_loaded"] >= PREVIEW_S:
+            run = self._pref("preview_for", PREVIEW_S)
+            if self.pv and self.pv["t_loaded"] and run > 0 and now - self.pv["t_loaded"] >= run:
                 self._promote()
                 return
             self._hover_tick()
@@ -1543,8 +1554,17 @@ class OnDemand:
         if a < 1:
             self._dirty = True
         if live:
-            left = self.pv["t_loaded"] + PREVIEW_S - time.monotonic()
-            if left < 4.5:
+            run = self._pref("preview_for", PREVIEW_S)
+            left = self.pv["t_loaded"] + run - time.monotonic()
+            if run <= 0:
+                msg = "OK  watch now   ·   any button cancels"
+                p.setFont(font("text", int(28 * unit)))
+                tw = QFontMetricsF(p.font()).horizontalAdvance(msg)
+                box = QRectF(w - tw - 100 * unit, top_h - 92 * unit, tw + 40 * unit, 50 * unit)
+                p.fillRect(box, QColor(7, 0, 22, 200))
+                p.fillRect(QRectF(box.left(), box.top(), 5 * unit, box.height()), QColor(PINK))
+                _txt(p, msg, int(28 * unit), box.left() + 22 * unit, box.top() + 35 * unit, YELLOW)
+            elif left < 4.5:
                 msg = f"PLAYING IN {max(1, int(left + 0.99))}   ·   OK now   ·   any button cancels"
                 p.setFont(font("text", int(28 * unit)))
                 tw = QFontMetricsF(p.font()).horizontalAdvance(msg)

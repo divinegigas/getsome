@@ -1019,6 +1019,17 @@ class SettingsDialog(QDialog):
             "what you were watching; OK opens On Demand). 0 = no channel, still in the BACK menu."
             + (f" Channel {taken.number} is “{taken.name}” at the moment, so it keeps that number."
                if taken else "")))
+        self.od_after = self._slider(lay, "Preview after", int(self.s.get("ondemand_preview_after", 3)), 30,
+                                     fmt=lambda v: f"{v} s resting on a title" if v else "Off (no previews)")
+        self.od_for = self._slider(lay, "Then play it after", int(self.s.get("ondemand_preview_for", 15)), 60,
+                                   fmt=lambda v: f"{v} s of preview" if v else "Never (press OK)")
+        self.od_music = self._slider(lay, "Browsing music", int(self.s.get("ondemand_music_volume", 14)), 60,
+                                     fmt=lambda v: f"{v}% of TV volume" if v else "Off")
+        self.od_pvol = self._slider(lay, "Preview sound", int(self.s.get("ondemand_preview_volume", 70)), 100,
+                                    fmt=lambda v: f"{v}% of TV volume" if v else "Silent")
+        lay.addWidget(hint("Previews play in the big picture at the top of On Demand when you rest on a title, "
+                           "then carry on full screen as the real thing. Changes apply the next time TV mode "
+                           "starts."))
 
         lay.addWidget(h2("Commercial breaks"))
         row = QHBoxLayout()
@@ -1251,17 +1262,18 @@ class SettingsDialog(QDialog):
             pass
         updater.restart(["setup"])
 
-    def _slider(self, lay, label: str, value: int, maximum: int) -> QSlider:
+    def _slider(self, lay, label: str, value: int, maximum: int, minimum: int = 0, fmt=str) -> QSlider:
+        """A labelled slider; fmt turns the value into the text shown next to it."""
         row = QHBoxLayout()
         lab = QLabel(label)
         lab.setMinimumWidth(150)
         row.addWidget(lab)
         sl = QSlider(Qt.Horizontal)
-        sl.setRange(0, maximum)
+        sl.setRange(minimum, maximum)
         sl.setValue(value)
-        val = QLabel(str(value))
-        val.setMinimumWidth(32)
-        sl.valueChanged.connect(lambda v: val.setText(str(v)))
+        val = QLabel(fmt(value))
+        val.setMinimumWidth(32 if fmt is str else 190)
+        sl.valueChanged.connect(lambda v: val.setText(fmt(v)))
         row.addWidget(sl, 1)
         row.addWidget(val)
         lay.addLayout(row)
@@ -1302,6 +1314,10 @@ class SettingsDialog(QDialog):
         self.s["ad_volume"] = self.ad_volume.value()
         self.s["guide_channel"] = self.guide.value()
         self.s["ondemand_channel"] = self.ondemand.value()
+        self.s["ondemand_preview_after"] = self.od_after.value()
+        self.s["ondemand_preview_for"] = self.od_for.value()
+        self.s["ondemand_music_volume"] = self.od_music.value()
+        self.s["ondemand_preview_volume"] = self.od_pvol.value()
         self.s["guide_music"] = self.gmusic.currentData()
         self.s["guide_preview"] = self.gpreview.isChecked()
         self.s["guide_audio"] = self.gaudio.currentData()

@@ -9,6 +9,9 @@ Modes (OnDemand.mode)
             in the backdrop; 8 s more and it grows to full screen and simply carries on playing
   "search"  an on-screen keyboard (a keyboard on the remote types straight in) and results as you type
   "details" one show (play/resume, seasons, episodes) or one film (play/resume/start over)
+  mini      BACK while playing keeps it playing in the backdrop area of the page you go back to
+            (self.p["mini"]); previews are off meanwhile; MENU brings it back full screen; BACK on the
+            home screen stops it
   "play"    full-screen playback with an on-screen bar: OK pause, Left/Right skip (hold to go faster),
             MENU audio/subtitles/picture, BACK stop; the next episode follows by itself
 
@@ -55,6 +58,8 @@ GROW_S = 0.6                # the preview growing to full screen
 BGM_LEVEL = 0.14            # browsing music, as a share of the TV volume
 PREVIEW_LEVEL = 0.7
 HERO_LEFT, HERO_H = 0.30, 0.60     # the backdrop area of the home screen (share of width / height)
+# Moving pictures (previews, the show in the corner) are given a 16:9 box, so they fill it without zooming
+# (cropping with panscan inside margins drew garbage with some GL drivers).
 
 
 def _hms(sec: float) -> str:
@@ -301,7 +306,7 @@ class OnDemand:
     def animating(self) -> bool:
         if self.mode is None:
             return False
-        if self.mode in ("promo", "play") or self.pv:
+        if self.mode in ("promo", "play") or self.pv or self.p:
             return True
         busy = self._dirty or time.monotonic() - self._last_input < 1.2 or self.items is None
         self._dirty = False
@@ -433,6 +438,8 @@ class OnDemand:
         """Share of the TV volume for what On Demand is playing right now."""
         if self.mode == "promo":
             return 0.6
+        if self.p and self.p.get("mini"):
+            return 1.0                       # the show you were watching carries on as it was
         if self.mode in ("home", "search", "details"):
             return self._pref("preview_volume", PREVIEW_LEVEL * 100) / 100 if self.pv \
                 else self._pref("music_volume", BGM_LEVEL * 100) / 100
@@ -459,7 +466,7 @@ class OnDemand:
 
     def _bgm_start(self) -> None:
         """Very quiet guide music while browsing (the guide's own tracks, as chosen in Settings)."""
-        if self.mode not in ("home", "search", "details") or self.pv:
+        if self.mode not in ("home", "search", "details") or self.pv or self.p:
             return
         from .. import assets_gen
 
@@ -494,7 +501,7 @@ class OnDemand:
         """Resting on a title: after a few seconds (Settings) its preview starts in the backdrop."""
         w = self.win
         after = self._pref("preview_after", HOVER_S)
-        if (after <= 0 or self.mode != "home" or self.pv or w.exit_menu.open or w.menu.open
+        if (after <= 0 or self.mode != "home" or self.pv or self.p or w.exit_menu.open or w.menu.open
                 or w.state.pin_entry is not None or time.monotonic() - self._last_input < after):
             return
         e = self._entry()
@@ -531,8 +538,7 @@ class OnDemand:
             return
         pv.update(path=path, start=start, ep=ep)
         self.bgm = False
-        self._margins(HERO_LEFT, 0.0, 0.0, 1.0 - HERO_H)
-        self.win._set_zoom("zoom")             # fill the backdrop area, no bars
+        self._margins(*self._hero_video())
         self.win._apply_volume()
         self.win.video.load(path, start=start if start > 1 else None)
         _log.info("on demand: preview of %s", os.path.basename(path))
@@ -617,6 +623,9 @@ class OnDemand:
 
     def shutdown(self) -> None:
         self._save_progress(final=True)
+        for t in (self.tick_timer, self.promo_timer, self.seek_timer):
+            t.stop()
+        self.mode = None
 
     # -------------------------------------------------------------- the On Demand channel ("promo")
     def start_promo(self) -> None:
@@ -728,6 +737,10 @@ class OnDemand:
              back_to: str = "details", keep: bool = False) -> None:
         """Full-screen playback. keep: the file is already playing (a preview growing up)."""
         w = self.win
+        if self.p and self.p.get("mini") and self.p["path"] == path:
+            self._unmini()                     # it's the one playing in the corner: carry on
+            return
+        grow_from = getattr(self, "_margins_now", (0.0, 0.0, 0.0, 0.0))
         self._save_progress(final=True)
         self._stop_promo()
         self._quiet_channel()
@@ -738,7 +751,7 @@ class OnDemand:
                   "osd_until": time.monotonic() + OSD_S, "seek": None, "seek_n": 0, "seek_last": 0.0,
                   "next_dismissed": False, "last_save": time.monotonic(), "back_to": back_to, "error": "",
                   "started": time.monotonic(), "pos": start, "dur": 0.0,
-                  "grow": time.monotonic() if keep else None}
+                  "grow": time.monotonic() if keep else None, "grow_from": grow_from}
         w.video.set_muted(False)
         w._apply_volume()
         if keep:
@@ -818,12 +831,12 @@ class OnDemand:
             self.promo_timer.start(800)          # skip to the next clip
 
     def _after_error(self) -> None:
-        if self.mode == "play" and self.p and self.p["error"]:
+        if self.p and self.p["error"]:
             self._stop_playback()
 
     def _save_progress(self, final: bool = False) -> None:
         p = self.p
-        if self.mode != "play" or not p or not p["loaded"]:
+        if not p or not p["loaded"]:
             return
         try:
             pos = self.win.video.player.time_pos
@@ -842,9 +855,72 @@ class OnDemand:
             self.history.save()
             p["last_save"] = time.monotonic()
 
-    def _stop_playback(self) -> None:
-        """BACK while playing: remember the place and go back to where we came from."""
+    def _mini_margins(self) -> tuple:
+        if self.mode != "search":
+            return self._hero_video()
+        hh = 0.185                              # under the search page's keyboard
+        aspect = self.win.video.width() / max(1, self.win.video.height())
+        return (0.045, 0.725, max(0.0, 1 - 0.045 - hh * 16 / 9 / aspect), 0.09)
+
+    def _hero_video(self) -> tuple:
+        """Margins of a 16:9 picture filling the backdrop area's height, against the right edge."""
+        aspect = self.win.video.width() / max(1, self.win.video.height())
+        return (max(HERO_LEFT, 1 - HERO_H * 16 / 9 / aspect), 0.0, 0.0, 1.0 - HERO_H)
+
+    def _to_mini(self) -> None:
+        """BACK while playing: keep playing in the backdrop area and browse."""
         p = self.p
+        self._save_progress(final=True)
+        p["mini"] = True
+        p["mini_at"] = time.monotonic()
+        p["grow"] = None
+        p["info"] = False
+        self.seek_timer.stop()
+        if p["seek"] is not None:
+            self._commit_seek()
+        if p["paused"]:                       # a paused show waits in the corner, still paused
+            pass
+        self.mode = "details" if p["back_to"] == "details" and self.det is not None else "home"
+        if self.mode == "details":
+            self._refresh_details()
+        else:
+            self._build_rows()
+        self.win.menu.close()
+        self._margins(*self._mini_margins())
+        self.win._apply_volume()
+        self._last_input = time.monotonic()
+
+    def _unmini(self) -> None:
+        """MENU while browsing with a show in the corner: back to it, full screen."""
+        p = self.p
+        if not p:
+            return
+        p["mini"] = False
+        p["grow"] = time.monotonic()
+        p["grow_from"] = getattr(self, "_margins_now", (0.0, 0.0, 0.0, 0.0))
+        p["osd_until"] = time.monotonic() + OSD_S
+        self.mode = "play"
+        self.win._apply_volume()
+
+    def _stop_mini(self) -> None:
+        """Stop the show in the corner (BACK on the home screen, or it finished): music comes back."""
+        self._save_progress(final=True)
+        self.p = None
+        self.seek_timer.stop()
+        self.win.video.stop()
+        self.win._set_zoom("normal")
+        self._margins()
+        self._build_rows()
+        if self.mode == "details":
+            self._refresh_details()
+        self._bgm_start()
+
+    def _stop_playback(self) -> None:
+        """Stop and go back to where we came from (a file that won't play, the last episode ending)."""
+        p = self.p
+        if p and p.get("mini"):
+            self._stop_mini()
+            return
         self._save_progress(final=True)
         self.win.video.stop()
         self.win.state.black = False
@@ -859,26 +935,31 @@ class OnDemand:
         self._last_input = time.monotonic()
         self._bgm_start()
 
+    def _play_tick(self) -> None:
+        p = self.p
+        try:
+            pl = self.win.video.player
+            pos, dur, eof = pl.time_pos, pl.duration, bool(pl.eof_reached)
+        except Exception:
+            return
+        if pos is not None:
+            p["pos"] = pos
+        if dur:
+            p["dur"] = dur
+        if not p["loaded"]:
+            return
+        if time.monotonic() - p.get("_saved", 0) > SAVE_EVERY:
+            p["_saved"] = time.monotonic()
+            self._save_progress()
+        if eof or (dur and pos is not None and pos >= dur - 0.4 and not p["paused"]):
+            self._finished()
+
     def _tick(self) -> None:
-        if self.mode == "play" and self.p:
-            p = self.p
-            try:
-                pl = self.win.video.player
-                pos, dur, eof = pl.time_pos, pl.duration, bool(pl.eof_reached)
-            except Exception:
-                return
-            if pos is not None:
-                p["pos"] = pos
-            if dur:
-                p["dur"] = dur
-            if not p["loaded"]:
-                return
-            if time.monotonic() - p.get("_saved", 0) > SAVE_EVERY:
-                p["_saved"] = time.monotonic()
-                self._save_progress()
-            if eof or (dur and pos is not None and pos >= dur - 0.4 and not p["paused"]):
-                self._finished()
-        elif self.mode in ("home", "search", "details"):
+        if self.p:
+            self._play_tick()
+            if self.p and self.p.get("mini"):
+                self._margins(*self._mini_margins())     # follows the page (search puts it lower left)
+        if self.mode in ("home", "search", "details"):
             now = time.monotonic()
             run = self._pref("preview_for", PREVIEW_S)
             if self.pv and self.pv["t_loaded"] and run > 0 and now - self.pv["t_loaded"] >= run:
@@ -909,6 +990,9 @@ class OnDemand:
 
     def _finished(self) -> None:
         p = self.p
+        if p.get("mini"):
+            self._stop_mini()                 # it ended in the corner: no next episode by itself
+            return
         self._save_progress(final=True)
         nxt = self._next_ep()
         if nxt and not p["next_dismissed"]:
@@ -1083,10 +1167,16 @@ class OnDemand:
             if nxt and dur and dur - pos <= NEXT_CARD_S and not p["next_dismissed"]:
                 p["next_dismissed"] = True        # first BACK just hides the "next episode" card
                 return True
-            self._stop_playback()
+            if p["error"] or not p["loaded"]:
+                self._stop_playback()
+            else:
+                self._to_mini()                    # keep playing in the corner while you browse
             return True
         if self.mode == "home" and self.pv:
             self._pv_stop()
+            return True
+        if self.mode == "home" and self.p:
+            self._stop_mini()                      # BACK on the home screen stops the show in the corner
             return True
         if self.mode == "details":
             if self.det and self.det["focus"] == "episodes":
@@ -1123,6 +1213,9 @@ class OnDemand:
             return False
         if self.mode == "play":
             return self._play_key(action)
+        if self.p and self.p.get("mini") and action == "menu":
+            self._unmini()                         # MENU: back to the show, full screen
+            return True
         if self.mode == "details":
             return self._details_key(action)
         if action in ("volume_up", "volume_down", "mute", "fullscreen"):
@@ -1391,7 +1484,11 @@ class OnDemand:
     def _paint_search(self, p: QPainter, w: int, h: int, dt: float) -> None:
         unit = h / 1080
         sr = self.search
-        p.fillRect(QRectF(0, 0, w, h), BG)
+        mini_rect = None
+        if self.p and self.p.get("mini"):        # the show you were watching plays under the keyboard
+            mini_rect = self._around(p, w, h, self._mini_margins())
+        else:
+            p.fillRect(QRectF(0, 0, w, h), BG)
         _gradient(p, QRectF(0, 0, w, h * 0.35), False, ((0, QColor(40, 8, 80, 160)), (1, QColor(7, 0, 22, 0))))
         self._header(p, w, h, unit)
         # the search field
@@ -1480,6 +1577,15 @@ class OnDemand:
                  max_w=w - rx - 60 * unit)
         self._hints(p, w, h, unit, "▲▼◀▶ choose    OK type / open    ▶ from the keyboard to the results    "
                                    "BACK " + ("keyboard" if sr["focus"] == "results" else "close search"))
+        if mini_rect is not None:
+            p.setPen(QPen(QColor(0, 240, 255, 160), 2 * unit))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(mini_rect)
+            _txt(p, "MENU  back to it", int(20 * unit), mini_rect.left() + 10 * unit, mini_rect.top() - 10 * unit,
+                 YELLOW)
+            if self.p.get("dur"):
+                _bar(p, QRectF(mini_rect.left(), mini_rect.bottom() - 5 * unit, mini_rect.width(), 5 * unit),
+                     (self.p.get("pos") or 0) / self.p["dur"], unit)
 
     # -------------------------------------------------------------- painting
     def paint(self, p: QPainter, w: int, h: int) -> None:
@@ -1516,14 +1622,47 @@ class OnDemand:
                   ((0, QColor(7, 0, 22, 0)), (0.45, QColor(7, 0, 22, 235)), (1, BG)))
         _txt(p, text, int(25 * unit), 60 * unit, h - 26 * unit, DIM)
 
+    @staticmethod
+    def _around(p: QPainter, w: int, h: int, m: tuple) -> QRectF:
+        """Paint the background around the picture mpv draws inside margins m; returns its rectangle."""
+        l, t, r, b = m
+        rect = QRectF(w * l, h * t, w * (1 - l - r), h * (1 - t - b))
+        p.fillRect(QRectF(0, 0, rect.left() + 1, h), BG)
+        p.fillRect(QRectF(rect.right() - 1, 0, w - rect.right() + 1, h), BG)
+        p.fillRect(QRectF(0, 0, w, rect.top() + 1), BG)
+        p.fillRect(QRectF(0, rect.bottom() - 1, w, h - rect.bottom() + 1), BG)
+        return rect
+
+    def _mini_label(self, p: QPainter, rect: QRectF, unit: float) -> None:
+        """"NOW PLAYING" tag on the corner picture."""
+        pl = self.p
+        it = pl["item"]
+        msg = "▶ " + (it["title"] + (f"  {pl['ep']['code']}" if pl.get("ep") and pl["ep"].get("code") else ""))
+        px = int(24 * unit)
+        p.setFont(font("text", px))
+        fm = QFontMetricsF(p.font())
+        hint = "MENU  back to it  ·  BACK on home  stop"
+        bw = min(rect.width() - 20 * unit, max(fm.horizontalAdvance(msg), fm.horizontalAdvance(hint)) + 40 * unit)
+        box = QRectF(rect.right() - bw - 12 * unit, rect.bottom() - 84 * unit, bw, 72 * unit)
+        p.fillRect(box, QColor(7, 0, 22, 205))
+        p.fillRect(QRectF(box.left(), box.top(), 5 * unit, box.height()), QColor(PINK))
+        _txt(p, msg, px, box.left() + 18 * unit, box.top() + 30 * unit, QColor("#ffffff"), max_w=bw - 30 * unit)
+        _txt(p, hint, int(20 * unit), box.left() + 18 * unit, box.top() + 60 * unit, YELLOW, max_w=bw - 30 * unit)
+        if pl.get("dur"):
+            _bar(p, QRectF(rect.left(), rect.bottom() - 5 * unit, rect.width(), 5 * unit),
+                 (pl.get("pos") or 0) / pl["dur"], unit)
+
     def _backdrop(self, p: QPainter, w: int, h: int, item: dict | None, top_h: float, unit: float) -> None:
         """The selected title's fanart in the top right, fading into the background; while a preview
         plays, mpv draws it in that same area and only the surroundings are painted."""
         r = QRectF(w * HERO_LEFT, 0, w * (1 - HERO_LEFT), top_h)
-        live = bool(self.pv and self.pv["t_loaded"])
+        mini = bool(self.p and self.p.get("mini"))
+        live = bool(self.pv and self.pv["t_loaded"]) or mini
         if live:
-            p.fillRect(QRectF(0, 0, r.left() + 1, h), BG)
-            p.fillRect(QRectF(r.left(), top_h - 1, w - r.left(), h - top_h + 1), BG)
+            r = self._around(p, w, h, self._hero_video())
+        if mini:
+            pass
+        elif live:
             a = _ease((time.monotonic() - self.pv["t_loaded"]) / 0.6)
             if a < 1:                         # fade from the backdrop into the moving picture
                 img = self._img((item or {}).get("art", {}).get("fanart") or "", 1920 if h > 1080 else 1280)
@@ -1553,7 +1692,9 @@ class OnDemand:
                   ((0, QColor(7, 0, 22, 0)), (1, BG)))
         if a < 1:
             self._dirty = True
-        if live:
+        if mini:
+            self._mini_label(p, r, unit)
+        elif live:
             run = self._pref("preview_for", PREVIEW_S)
             left = self.pv["t_loaded"] + run - time.monotonic()
             if run <= 0:
@@ -1785,22 +1926,34 @@ class OnDemand:
             hint += "enter PIN"
         else:
             hint += "details"
-        self._hints(p, w, h, unit, hint + "    BACK menu (switch to cable)")
+        if self.p and self.p.get("mini"):
+            hint = hint.replace("MENU remove from row", "").rstrip() + "    MENU back to the show    BACK stop the show"
+        else:
+            hint += "    BACK menu (switch to cable)"
+        self._hints(p, w, h, unit, hint)
 
     def _paint_details(self, p: QPainter, w: int, h: int, dt: float) -> None:
         unit = h / 1080
         d = self.det
         it = d["item"]
         art = it.get("art") or {}
-        p.fillRect(QRectF(0, 0, w, h), BG)
-        img = self._img(art.get("fanart") or art.get("landscape") or "", 1920 if h > 1080 else 1280)
-        if img is not None:
-            _cover(p, img, QRectF(0, 0, w, h))
-            p.fillRect(QRectF(0, 0, w, h), QColor(7, 0, 22, 70))
-        _gradient(p, QRectF(0, 0, w * 0.75, h), True,
-                  ((0, QColor(7, 0, 22, 245)), (0.6, QColor(7, 0, 22, 180)), (1, QColor(7, 0, 22, 0))))
-        _gradient(p, QRectF(0, h * 0.45, w, h * 0.55), False, ((0, QColor(7, 0, 22, 0)), (0.5, QColor(7, 0, 22, 225)),
-                                                               (1, BG)))
+        mini_rect = None
+        if self.p and self.p.get("mini"):        # the show you were watching plays top right
+            mini_rect = self._around(p, w, h, self._hero_video())
+            _gradient(p, QRectF(mini_rect.left() - 1, 0, mini_rect.width() * 0.35, mini_rect.height()), True,
+                      ((0, BG), (1, QColor(7, 0, 22, 0))))
+            _gradient(p, QRectF(mini_rect.left(), mini_rect.bottom() - mini_rect.height() * 0.3, mini_rect.width(),
+                                mini_rect.height() * 0.3 + 1), False, ((0, QColor(7, 0, 22, 0)), (1, BG)))
+        else:
+            p.fillRect(QRectF(0, 0, w, h), BG)
+            img = self._img(art.get("fanart") or art.get("landscape") or "", 1920 if h > 1080 else 1280)
+            if img is not None:
+                _cover(p, img, QRectF(0, 0, w, h))
+                p.fillRect(QRectF(0, 0, w, h), QColor(7, 0, 22, 70))
+            _gradient(p, QRectF(0, 0, w * 0.75, h), True,
+                      ((0, QColor(7, 0, 22, 245)), (0.6, QColor(7, 0, 22, 180)), (1, QColor(7, 0, 22, 0))))
+            _gradient(p, QRectF(0, h * 0.45, w, h * 0.55), False,
+                      ((0, QColor(7, 0, 22, 0)), (0.5, QColor(7, 0, 22, 225)), (1, BG)))
         self._header(p, w, h, unit)
         show = it["kind"] == "show"
         extra, plot = "", None
@@ -1896,6 +2049,8 @@ class OnDemand:
         if it["kind"] == "movie" or d["focus"] == "episodes":
             hint += "MENU watched / unwatched    "
         self._hints(p, w, h, unit, hint + "BACK back")
+        if mini_rect is not None:
+            self._mini_label(p, mini_rect, unit)
 
     def _paint_promo(self, p: QPainter, w: int, h: int) -> None:
         unit = h / 1080
@@ -1971,7 +2126,7 @@ class OnDemand:
             return
         it = pl["item"]
         now = time.monotonic()
-        if pl.get("grow"):                       # a preview growing to full screen
+        if pl.get("grow"):                       # a preview (or the corner picture) growing to full screen
             f = _ease((now - pl["grow"]) / GROW_S)
             if f >= 1:
                 pl["grow"] = None
@@ -1979,9 +2134,10 @@ class OnDemand:
                 self.win._set_zoom("normal")
                 self.win._apply_zoom()
             else:
-                self._margins(HERO_LEFT * (1 - f), 0.0, 0.0, (1 - HERO_H) * (1 - f))
-                p.fillRect(QRectF(0, 0, w * HERO_LEFT * (1 - f), h), BG)
-                p.fillRect(QRectF(0, h * (1 - (1 - HERO_H) * (1 - f)), w, h), BG)
+                l0, t0, r0, b0 = pl.get("grow_from") or self._hero_video()
+                m = (l0 * (1 - f), t0 * (1 - f), r0 * (1 - f), b0 * (1 - f))
+                self._margins(*m)
+                self._around(p, w, h, m)
         if not pl["loaded"] or pl["error"]:
             p.fillRect(QRectF(0, 0, w, h), BG)
             art = it.get("art") or {}

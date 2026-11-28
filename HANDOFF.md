@@ -608,7 +608,7 @@ part-watched things, OK opens the browser; the BACK menu switches between cable 
     `BGM_LEVEL` 14 % of the TV volume in home/details (`OnDemand._bgm_start`); `TVWindow._apply_volume` asks
     `vod.volume_factor()` (promo 60 %, preview 70 %, music 14 %, playing 100 %).
   * Hover preview: resting a few seconds (Settings, default 3) on a home tile plays its next-up episode / film (resume point) in the
-    backdrop area: the main mpv with `video-margin-ratio-left/bottom` = 0.30 / 0.40 and panscan ("zoom");
+    backdrop area: the main mpv with `video-margin-ratio-left/bottom` (a 16:9 box against the right edge, no zoom);
     the home paint leaves that rectangle unpainted. After the preview time (Settings, default 15 s) (or OK) `_promote()` →
     `play(keep=True)`: no reload, margins animate to 0 over 0.6 s, then the show's own zoom. Any other button
     cancels (music comes back); BACK cancels without opening the menu. One decoder throughout.
@@ -646,6 +646,15 @@ part-watched things, OK opens the browser; the BACK menu switches between cable 
   previews), "Then play it after" `ondemand_preview_for` (15 s of preview, 0 = only OK), "Browsing music"
   `ondemand_music_volume` (14 %, 0 = off), "Preview sound" `ondemand_preview_volume` (70 %). TV mode reads them
   at start (`OnDemand._pref`); `HOVER_S` / `PREVIEW_S` / `BGM_LEVEL` / `PREVIEW_LEVEL` are only fallbacks.
+- **Keep watching while browsing (28 Nov, owner request)**: BACK while playing On Demand (`OnDemand._to_mini`)
+  keeps `self.p` with `p["mini"]` and goes to the page you came from (show page or home); the picture stays
+  in the top-right 16:9 box (`_hero_video()`: margins left = 1 − 0.6·16/9/aspect, bottom 0.4; on the search
+  page a small box under the keyboard), full volume, no browsing music, **no hover previews**. MENU anywhere
+  (`_unmini`) grows it back to full screen (`grow_from` = current margins). BACK on the home screen
+  (`_stop_mini`) stops it and the music returns; it ending in the box also stops it (no autoplay there).
+  Playing anything else replaces it; Play on the same file just brings it back. `_tick` now runs
+  `_play_tick` whenever `self.p` exists. Previews use the same 16:9 box now: **panscan inside
+  video-margin-ratio drew striped garbage under llvmpipe**, so no zoom is used there any more.
 - Ideas next: A–Z jump (number keys could jump letters, but digits currently mean "go to channel"),
   trailers or a live preview behind the home backdrop, "On Demand" row in the guide, Android support.
 
